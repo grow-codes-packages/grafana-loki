@@ -1,0 +1,32 @@
+# Test-only auth + fault gateway in front of grafana-loki (GRO-1374). Loki itself has no authentication;
+# hosted Loki and real deployments put Basic or Bearer auth in a gateway. This lets the SDK suites prove
+# Authorization headers, AuthenticationError (401), retries/Retry-After (429/503) and WebSocket tail
+# through a proxy. ${...} with upper-case names are filled by the nginx image's envsubst step.
+map $http_upgrade $connection_upgrade { default upgrade; '' close; }
+
+server {
+  listen 8080;
+
+  location = /gateway-health { access_log off; return 200 "ok\n"; }
+
+  location / {
+    # Fault injection: requests carrying X-Grow-Fault get the matching status (the SDK sends it via
+    # config.headers) - deterministic, stateless retry tests.
+    if ($http_x_grow_fault = "429") { add_header Retry-After 1 always; return 429 "rate limited by test gateway\n"; }
+    if ($http_x_grow_fault = "503") { add_header Retry-After 1 always; return 503 "unavailable (test gateway)\n"; }
+    if ($http_x_grow_fault = "502") { return 502 "bad gateway (test gateway)\n"; }
+
+    set $auth_ok 0;
+    if ($http_authorization = "Basic ${LOKI_PROXY_BASIC_B64}") { set $auth_ok 1; }
+    if ($http_authorization = "Bearer ${LOKI_PROXY_BEARER_TOKEN}") { set $auth_ok 1; }
+    if ($auth_ok = 0) { add_header WWW-Authenticate 'Basic realm="loki"' always; return 401 "unauthorized\n"; }
+
+    proxy_pass http://grafana-loki:3100;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Authorization "";
+    proxy_read_timeout 1h;
+    client_max_body_size 16m;
+  }
+}

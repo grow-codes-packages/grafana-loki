@@ -1,0 +1,124 @@
+# Grafana Loki real-service fixture for grow-codes-packages/grafana-loki (GRO-1374, SPEC §8).
+# Image tag = stack catalog (platform shared-libraries/packages/stack-catalog, key grafana-loki).
+# Two Loki single-binaries, no host ports:
+#   grafana-loki     auth_enabled: false  (Grow config, the default target)        http://grafana-loki:3100
+#   grafana-loki-mt  auth_enabled: true   (multi-tenancy, X-Scope-OrgID required)  http://grafana-loki-mt:3100
+# plus grafana-loki-auth, a test-only nginx gateway (Basic/Bearer, fault injection) in front of
+# grafana-loki at http://grafana-loki-auth:8080, because Loki itself has no authentication.
+# The template adds test-<lang> services that need only:
+#   environment: GROW_GRAFANA_LOKI_URL=http://grafana-loki:3100
+#   volumes: [bootstrap:/bootstrap:ro]     (multi-tenant URL + tenant ids are in /bootstrap/env)
+#   depends_on: { bootstrap: { condition: service_completed_successfully } }
+name: grafana-loki-sdk
+
+x-proxy-auth: &proxy_auth
+  # Test-only gateway credentials for a container that is never published; verify.sh overrides them per run.
+  # LOKI_PROXY_BASIC_B64 must equal base64("$LOKI_PROXY_USERNAME:$LOKI_PROXY_PASSWORD").
+  LOKI_PROXY_USERNAME: ${LOKI_PROXY_USERNAME:-sdk-user}
+  LOKI_PROXY_PASSWORD: ${LOKI_PROXY_PASSWORD:-sdk-fixture-only-pass}
+  LOKI_PROXY_BASIC_B64: ${LOKI_PROXY_BASIC_B64:-c2RrLXVzZXI6c2RrLWZpeHR1cmUtb25seS1wYXNz}
+  LOKI_PROXY_BEARER_TOKEN: ${LOKI_PROXY_BEARER_TOKEN:-sdk-fixture-only-bearer}
+
+x-loki: &loki
+  image: grafana/loki:3.7.10
+  depends_on:
+    hc-tools:
+      condition: service_completed_successfully
+  # The image has no shell, libc or HTTP client. hc-tools copies Alpine's busybox and the musl loader
+  # (which is also its libc) into a read-only volume; the healthcheck runs busybox wget through it.
+  healthcheck:
+    test: ["CMD", "/hc/ld-musl-x86_64.so.1", "/hc/busybox", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3100/ready"]
+    interval: 2s
+    timeout: 3s
+    retries: 60
+    start_period: 5s
+  mem_limit: 768m
+  # /loki (WAL, TSDB, chunks) is a tmpfs owned by the image's UID 10001, not a host-backed volume:
+  # Loki's WAL refuses every push with 500 "Ingester is shutting down" once the filesystem holding
+  # /loki is >= 90 % full (ingester.wal-disk-full-threshold), which made the fixture depend on the
+  # host's disk usage. A small tmpfs keeps the Grow config unchanged and the fixture deterministic.
+
+services:
+  hc-tools:
+    image: alpine:3.24.4
+    volumes:
+      - hc-tools:/out
+    entrypoint: ["/bin/sh", "-c", "cp /bin/busybox /lib/ld-musl-x86_64.so.1 /out/ && chmod 0555 /out/*"]
+    healthcheck:
+      test: ["CMD", "test", "-x", "/out/busybox"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+    restart: "no"
+
+  service:   # service under test (harness contract); reachable as `grafana-loki`
+    networks:
+      default:
+        aliases: [grafana-loki]
+    <<: *loki
+    command: ["-config.file=/etc/loki/sdk/loki.yaml"]
+    volumes:
+      - ./config:/etc/loki/sdk:ro
+      - hc-tools:/hc:ro
+    tmpfs:
+      - /loki:size=256m,uid=10001,gid=10001,mode=0750
+
+  grafana-loki-mt:
+    <<: *loki
+    command: ["-config.file=/etc/loki/sdk/loki-multi-tenant.yaml"]
+    volumes:
+      - ./config:/etc/loki/sdk:ro
+      - hc-tools:/hc:ro
+    tmpfs:
+      - /loki:size=256m,uid=10001,gid=10001,mode=0750
+
+  grafana-loki-auth:
+    image: nginx:1.27.5-alpine
+    depends_on:
+      service:
+        condition: service_healthy
+    environment:
+      <<: *proxy_auth
+      NGINX_ENTRYPOINT_QUIET_LOGS: "1"
+    volumes:
+      - ./auth-proxy:/etc/nginx/templates:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/gateway-health"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    mem_limit: 64m
+
+  # One-shot: waits for both Loki instances, checks version + tenant enforcement, writes /bootstrap/env.
+  bootstrap:
+    image: curlimages/curl:8.23.0
+    user: "0:0"               # the named volume is root-owned; curl_user cannot write to it
+    depends_on:
+      service:
+        condition: service_healthy
+      grafana-loki-mt:
+        condition: service_healthy
+      grafana-loki-auth:
+        condition: service_healthy
+    environment:
+      <<: *proxy_auth
+      LOKI_AUTH_PROXY_URL: http://grafana-loki-auth:8080
+      LOKI_INTERNAL_URL: http://grafana-loki:3100
+      LOKI_MT_INTERNAL_URL: http://grafana-loki-mt:3100
+      LOKI_EXPECTED_VERSION: 3.7.10
+      LOKI_TENANT_A: sdk-tenant-a
+      LOKI_TENANT_B: sdk-tenant-b
+    volumes:
+      - ./bootstrap:/scripts:ro
+      - bootstrap:/bootstrap
+    entrypoint: ["/bin/sh", "/scripts/bootstrap.sh"]
+    healthcheck:
+      test: ["CMD", "test", "-s", "/bootstrap/env"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: "no"
+
+volumes:
+  hc-tools: {}
+  bootstrap: {}
