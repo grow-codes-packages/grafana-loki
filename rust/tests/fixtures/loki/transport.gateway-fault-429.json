@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/loki/api/v1/push",
+    "headers": {
+      "X-Grow-Fault": "429"
+    }
+  },
+  "response": {
+    "status": 429,
+    "contentType": "application/octet-stream",
+    "body": {
+      "base64": "cmF0ZSBsaW1pdGVkIGJ5IHRlc3QgZ2F0ZXdheQo=",
+      "text": "rate limited by test gateway\n"
+    }
+  },
+  "note": "test gateway fault injection; Retry-After header: 1"
+}

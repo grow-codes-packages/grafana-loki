@@ -1,0 +1,68 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/loki/api/v1/series",
+    "query": {
+      "start": "<ns>",
+      "end": "<ns>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "contentType": "application/json; charset=UTF-8",
+    "body": {
+      "status": "success",
+      "data": [
+        {
+          "env": "test",
+          "hdr": "ignored",
+          "level": "info",
+          "run": "c023892b83",
+          "service_name": "sdk-verify"
+        },
+        {
+          "env": "test",
+          "level": "info",
+          "run": "c023892b83",
+          "service_name": "sdk-verify",
+          "enc": "gzip"
+        },
+        {
+          "enc": "protobuf",
+          "env": "test",
+          "run": "c023892b83",
+          "service_name": "sdk-verify"
+        },
+        {
+          "service_name": "unknown_service"
+        },
+        {
+          "env": "test",
+          "level": "error",
+          "run": "c023892b83",
+          "service_name": "sdk-verify"
+        },
+        {
+          "service_name": "otlp-pb-c023892b83"
+        },
+        {
+          "level": "info",
+          "run": "c023892b83",
+          "service_name": "sdk-verify",
+          "dedup": "1",
+          "env": "test"
+        },
+        {
+          "env": "test",
+          "level": "info",
+          "run": "c023892b83",
+          "service_name": "sdk-verify"
+        },
+        {
+          "deployment_environment": "test",
+          "service_name": "otlp-json-c023892b83"
+        }
+      ]
+    }
+  }
+}

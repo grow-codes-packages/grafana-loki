@@ -1,0 +1,14 @@
+{
+  "request": {
+    "method": "GET(websocket)",
+    "path": "/loki/api/v1/tail",
+    "query": {
+      "query": "count_over_time({run=\"c023892b83\", tail=\"1\"}[1m])"
+    }
+  },
+  "response": {
+    "status": 101,
+    "firstFrameOpcode": 8,
+    "payload": "\u0003�only log selector is supported"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/loki/api/v1/push",
+    "body": {
+      "streams": [
+        {
+          "stream": {
+            "run": "c023892b83"
+          },
+          "values": [
+            [
+              1795035067667730694,
+              "numeric ts"
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 400,
+    "contentType": "text/plain; charset=utf-8",
+    "body": "loghttp.PushRequest.Streams: []loghttp.LogProtoStream: unmarshalerDecoder: Value looks like Number/Boolean/None, but can't find its end: ',' or '}' symbol, error found in #10 byte of ...|ric ts\"]]}]}|..., bigger context ...|, \"values\": [[1795035067667730694, \"numeric ts\"]]}]}|...\n"
+  }
+}

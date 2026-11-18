@@ -1,0 +1,15 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/loki/api/v1/push",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": "{\"streams\": ["
+  },
+  "response": {
+    "status": 400,
+    "contentType": "text/plain; charset=utf-8",
+    "body": "loghttp.PushRequest.Streams: []loghttp.LogProtoStream: Skip: do not know how to skip: 0, error found in #10 byte of ...|treams\": [|..., bigger context ...|{\"streams\": [|...\n"
+  }
+}
