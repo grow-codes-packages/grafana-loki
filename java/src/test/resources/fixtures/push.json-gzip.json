@@ -1,0 +1,35 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/loki/api/v1/push",
+    "headers": {
+      "Content-Type": "application/json",
+      "Content-Encoding": "gzip"
+    },
+    "body": {
+      "streams": [
+        {
+          "stream": {
+            "service_name": "sdk-verify",
+            "env": "test",
+            "run": "c023892b83",
+            "level": "info",
+            "enc": "gzip"
+          },
+          "values": [
+            [
+              "1795034767068713072",
+              "gzip line c023892b83"
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 204,
+    "contentType": "",
+    "body": ""
+  },
+  "note": "body sent gzip-compressed"
+}

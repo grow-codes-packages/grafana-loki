@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/loki/api/v1/format_query",
+    "query": {
+      "query": "{app=\"x\"}|=\"err\"|json|status>=500"
+    }
+  },
+  "response": {
+    "status": 200,
+    "contentType": "application/json; charset=utf-8",
+    "body": {
+      "status": "success",
+      "data": "{app=\"x\"} |= \"err\" | json | status>=500"
+    }
+  }
+}

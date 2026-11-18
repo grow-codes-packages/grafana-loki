@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/loki/api/v1/query",
+    "query": {
+      "query": "{run=\"c023892b83\"}",
+      "time": "1795035067722116953",
+      "limit": "10",
+      "direction": "backward"
+    }
+  },
+  "response": {
+    "status": 400,
+    "contentType": "text/plain; charset=utf-8",
+    "body": "log queries are not supported as an instant query type, please change your query to a range query type"
+  }
+}
