@@ -1,0 +1,31 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/loki/api/v1/labels",
+    "query": {
+      "since": "5m"
+    },
+    "headers": {
+      "Authorization": "Basic <redacted>"
+    }
+  },
+  "response": {
+    "status": 200,
+    "contentType": "application/json; charset=UTF-8",
+    "body": {
+      "status": "success",
+      "data": [
+        "dedup",
+        "deployment_environment",
+        "enc",
+        "env",
+        "hdr",
+        "level",
+        "nasty",
+        "run",
+        "service_name",
+        "tail"
+      ]
+    }
+  }
+}

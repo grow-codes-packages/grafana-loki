@@ -1,0 +1,20 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/otlp/v1/logs",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "resourceLogs": []
+    }
+  },
+  "response": {
+    "status": 422,
+    "contentType": "application/octet-stream",
+    "body": {
+      "base64": "EjllcnJvciBhdCBsZWFzdCBvbmUgdmFsaWQgc3RyZWFtIGlzIHJlcXVpcmVkIGZvciBpbmdlc3Rpb24=",
+      "text": "\u00129error at least one valid stream is required for ingestion"
+    }
+  }
+}

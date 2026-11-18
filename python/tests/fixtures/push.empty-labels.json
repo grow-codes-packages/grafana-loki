@@ -1,0 +1,24 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/loki/api/v1/push",
+    "body": {
+      "streams": [
+        {
+          "stream": {},
+          "values": [
+            [
+              "1795035067662373572",
+              "x"
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 204,
+    "contentType": "",
+    "body": ""
+  }
+}

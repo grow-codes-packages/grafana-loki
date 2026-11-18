@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/loki/api/v1/query_range",
+    "query": {
+      "query": "{run=\"c023892b83\"}",
+      "start": "1795035067793121183",
+      "end": "1795034467064713072"
+    }
+  },
+  "response": {
+    "status": 400,
+    "contentType": "text/plain; charset=utf-8",
+    "body": "end timestamp must not be before or equal to start time"
+  }
+}
