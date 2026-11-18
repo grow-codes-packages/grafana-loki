@@ -1,0 +1,43 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/loki/api/v1/push",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "streams": [
+        {
+          "stream": {
+            "service_name": "sdk-verify",
+            "env": "test",
+            "run": "c023892b83",
+            "level": "info"
+          },
+          "values": [
+            [
+              "1795034767066713072",
+              "{\"msg\": \"json line c023892b83\", \"status\": 503}",
+              {
+                "request_id": "req-c023892b83",
+                "trace_id": "0af7651916cd43dd8448eb211c80319c"
+              }
+            ],
+            [
+              "1795034767067713072",
+              "{\"msg\": \"json line ok c023892b83\", \"status\": 200}",
+              {
+                "request_id": "req2-c023892b83"
+              }
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 204,
+    "contentType": "",
+    "body": ""
+  }
+}

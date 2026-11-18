@@ -1,0 +1,71 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/otlp/v1/logs",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "resourceLogs": [
+        {
+          "resource": {
+            "attributes": [
+              {
+                "key": "service.name",
+                "value": {
+                  "stringValue": "otlp-json-c023892b83"
+                }
+              },
+              {
+                "key": "deployment.environment",
+                "value": {
+                  "stringValue": "test"
+                }
+              }
+            ]
+          },
+          "scopeLogs": [
+            {
+              "scope": {
+                "name": "grow-sdk-verify"
+              },
+              "logRecords": [
+                {
+                  "timeUnixNano": "1795035007690130926",
+                  "observedTimeUnixNano": "1795035007690130926",
+                  "severityNumber": 17,
+                  "severityText": "ERROR",
+                  "body": {
+                    "stringValue": "otlp json body c023892b83"
+                  },
+                  "attributes": [
+                    {
+                      "key": "request.id",
+                      "value": {
+                        "stringValue": "otlp-c023892b83"
+                      }
+                    },
+                    {
+                      "key": "http.status_code",
+                      "value": {
+                        "intValue": "503"
+                      }
+                    }
+                  ],
+                  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+                  "spanId": "00f067aa0ba902b7",
+                  "flags": 1
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 204,
+    "contentType": "",
+    "body": ""
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/loki/api/v1/push",
+    "body": {
+      "streams": [
+        {
+          "stream": {
+            "bad-label": "x",
+            "run": "c023892b83"
+          },
+          "values": [
+            [
+              "1795035067660761622",
+              "x"
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 400,
+    "contentType": "text/plain; charset=utf-8",
+    "body": "couldn't parse labels: 1:5: parse error: unexpected character inside braces: '-'\n"
+  }
+}

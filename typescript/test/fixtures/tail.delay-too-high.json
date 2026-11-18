@@ -1,0 +1,15 @@
+{
+  "request": {
+    "method": "GET(websocket)",
+    "path": "/loki/api/v1/tail",
+    "query": {
+      "query": "{run=\"c023892b83\", tail=\"1\"}",
+      "delay_for": "10"
+    }
+  },
+  "response": {
+    "status": 400,
+    "contentType": "text/plain",
+    "body": "delay_for can't be greater than 5"
+  }
+}
