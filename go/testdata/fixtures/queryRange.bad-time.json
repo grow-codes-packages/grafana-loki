@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/loki/api/v1/query_range",
+    "query": {
+      "query": "{run=\"c023892b83\"} |= \"x\"",
+      "start": "yesterday",
+      "end": "1795035067797251239"
+    }
+  },
+  "response": {
+    "status": 400,
+    "contentType": "text/plain; charset=utf-8",
+    "body": "could not parse 'start' parameter: strconv.ParseInt: parsing \"yesterday\": invalid syntax"
+  }
+}

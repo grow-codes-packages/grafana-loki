@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/otlp/v1/logs",
+    "headers": {
+      "Content-Type": "application/x-protobuf"
+    },
+    "body": "not protobuf"
+  },
+  "response": {
+    "status": 400,
+    "contentType": "application/octet-stream",
+    "body": {
+      "base64": "Ehlwcm90bzogaWxsZWdhbCB3aXJlVHlwZSA2",
+      "text": "\u0012\u0019proto: illegal wireType 6"
+    }
+  }
+}

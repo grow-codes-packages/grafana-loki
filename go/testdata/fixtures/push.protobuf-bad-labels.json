@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/loki/api/v1/push",
+    "headers": {
+      "Content-Type": "application/x-protobuf"
+    },
+    "body": {
+      "labels": "{run=unquoted}"
+    }
+  },
+  "response": {
+    "status": 400,
+    "contentType": "text/plain; charset=utf-8",
+    "body": "couldn't parse labels: 1:6: parse error: unexpected identifier \"unquoted\" in label set, expected string\n"
+  }
+}
