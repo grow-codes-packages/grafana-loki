@@ -1,0 +1,14 @@
+{
+  "request": {
+    "method": "GET(websocket)",
+    "path": "/loki/api/v1/tail",
+    "query": {
+      "query": "{run=\"c023892b83\", tail=\"1\"}"
+    }
+  },
+  "response": {
+    "status": 401,
+    "contentType": "text/plain",
+    "body": "no org id"
+  }
+}

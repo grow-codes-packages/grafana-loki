@@ -1,0 +1,50 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/loki/api/v1/series",
+    "query": {
+      "match[]": [
+        "{run=\"c023892b83\", level=\"info\"}",
+        "{run=\"c023892b83\", enc=\"gzip\"}"
+      ],
+      "start": "1795034467064713072",
+      "end": "1795035127822542337"
+    }
+  },
+  "response": {
+    "status": 200,
+    "contentType": "application/json; charset=UTF-8",
+    "body": {
+      "status": "success",
+      "data": [
+        {
+          "env": "test",
+          "hdr": "ignored",
+          "level": "info",
+          "run": "c023892b83",
+          "service_name": "sdk-verify"
+        },
+        {
+          "dedup": "1",
+          "env": "test",
+          "level": "info",
+          "run": "c023892b83",
+          "service_name": "sdk-verify"
+        },
+        {
+          "enc": "gzip",
+          "env": "test",
+          "level": "info",
+          "run": "c023892b83",
+          "service_name": "sdk-verify"
+        },
+        {
+          "run": "c023892b83",
+          "service_name": "sdk-verify",
+          "env": "test",
+          "level": "info"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/loki/api/v1/index/stats",
+    "query": {
+      "query": "{run=\"c023892b83\"}",
+      "start": "1795034467064713072",
+      "end": "1795035152604333393"
+    }
+  },
+  "response": {
+    "status": 200,
+    "contentType": "application/json; charset=UTF-8",
+    "body": {
+      "streams": 8,
+      "chunks": 8,
+      "bytes": 0,
+      "entries": 13
+    }
+  }
+}

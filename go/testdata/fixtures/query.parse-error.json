@@ -1,0 +1,15 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/loki/api/v1/query",
+    "query": {
+      "query": "{run=\"x\"",
+      "time": "1795035067724167594"
+    }
+  },
+  "response": {
+    "status": 400,
+    "contentType": "text/plain; charset=utf-8",
+    "body": "parse error at line 1, col 9: syntax error: unexpected $end, expecting } or ,"
+  }
+}

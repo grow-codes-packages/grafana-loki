@@ -59,3 +59,23 @@ copyright and licence.
 
   CODE_OF_CONDUCT.md is adapted from the Contributor Covenant, version 2.1,
   https://www.contributor-covenant.org, licensed under CC BY 4.0.
+
+  Protobuf push messages (all five packages). The messages of Loki's protobuf
+  push API (PushRequest, StreamAdapter, EntryAdapter, LabelPairAdapter) are
+  hand-encoded from the field numbers and types of pkg/push/push.proto of
+  Grafana Loki v3.7.10:
+    https://github.com/grafana/loki/blob/v3.7.10/pkg/push/push.proto
+    Copyright Grafana Labs, licensed under the Apache License, Version 2.0
+    (an Apache-2.0 exception per Loki LICENSING.md).
+  google.protobuf.Timestamp field numbers come from the Protocol Buffers
+  well-known types (Copyright Google Inc., BSD-3-Clause). The OTLP log messages
+  follow the OpenTelemetry protocol specification (Copyright The OpenTelemetry
+  Authors, Apache-2.0). google.rpc.Status (decoded from OTLP error bodies) comes
+  from the Google APIs common protos (Copyright Google LLC, Apache-2.0). No code
+  was copied from these projects; no Grafana Loki Go module is imported.
+
+  Notable runtime dependencies of the service code: snappyjs (MIT) and ws (MIT)
+  for TypeScript; snap (BSD-3-Clause) and tokio-tungstenite (MIT) for Rust;
+  github.com/golang/snappy (BSD-3-Clause) and github.com/coder/websocket (ISC)
+  for Go; websockets (BSD-3-Clause) and the optional cramjam (MIT) for Python;
+  io.airlift:aircompressor (Apache-2.0) for Java.

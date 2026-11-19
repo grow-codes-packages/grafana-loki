@@ -1,0 +1,26 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/loki/api/v1/push",
+    "body": {
+      "streams": [
+        {
+          "stream": {
+            "run": "c023892b83"
+          },
+          "values": [
+            [
+              "1795038667665815951",
+              "future"
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 400,
+    "contentType": "text/plain; charset=utf-8",
+    "body": "entry for stream '{run=\"c023892b83\", service_name=\"unknown_service\"}' has timestamp too new: 2026-11-18T21:51:07Z\n"
+  }
+}

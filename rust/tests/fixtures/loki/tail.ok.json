@@ -1,0 +1,34 @@
+{
+  "request": {
+    "method": "GET(websocket)",
+    "path": "/loki/api/v1/tail",
+    "query": {
+      "query": "{run=\"c023892b83\", tail=\"1\"}",
+      "delay_for": "0",
+      "limit": "100"
+    }
+  },
+  "response": {
+    "status": 101,
+    "frame": {
+      "streams": [
+        {
+          "stream": {
+            "env": "test",
+            "level": "info",
+            "run": "c023892b83",
+            "service_name": "sdk-verify",
+            "tail": "1"
+          },
+          "values": [
+            [
+              "1795035084588079388",
+              "tail marker c023892b83"
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "note": "each WebSocket text frame is one JSON object {streams:[...], dropped_entries?:[...]}"
+}

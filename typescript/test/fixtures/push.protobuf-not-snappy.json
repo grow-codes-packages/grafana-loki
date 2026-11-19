@@ -1,0 +1,15 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/loki/api/v1/push",
+    "headers": {
+      "Content-Type": "application/x-protobuf"
+    },
+    "body": "<raw protobuf, no snappy>"
+  },
+  "response": {
+    "status": 400,
+    "contentType": "text/plain; charset=utf-8",
+    "body": "snappy: corrupt input\n"
+  }
+}

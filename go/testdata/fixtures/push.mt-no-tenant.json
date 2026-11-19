@@ -1,0 +1,28 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/loki/api/v1/push",
+    "body": {
+      "streams": [
+        {
+          "stream": {
+            "service_name": "sdk-verify",
+            "run": "c023892b83",
+            "tenant": "a"
+          },
+          "values": [
+            [
+              "1795034767064713072",
+              "tenant-a only c023892b83"
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 401,
+    "contentType": "text/plain; charset=utf-8",
+    "body": "no org id\n"
+  }
+}

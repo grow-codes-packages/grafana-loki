@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/loki/api/v1/query_range",
+    "query": {
+      "query": "{run=\"c023892b83\"}",
+      "start": "<ns>",
+      "end": "<ns>"
+    },
+    "headers": {
+      "X-Scope-OrgID": "sdk-tenant-a|sdk-tenant-b"
+    }
+  },
+  "response": {
+    "status": 500,
+    "contentType": "text/plain; charset=utf-8",
+    "body": "multiple org IDs present"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/loki/api/v1/labels",
+    "query": {
+      "since": "5m"
+    }
+  },
+  "response": {
+    "status": 401,
+    "contentType": "text/plain; charset=utf-8",
+    "body": "no org id\n"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/loki/api/v1/push",
+    "headers": {
+      "X-Grow-Fault": "502"
+    }
+  },
+  "response": {
+    "status": 502,
+    "contentType": "application/octet-stream",
+    "body": {
+      "base64": "YmFkIGdhdGV3YXkgKHRlc3QgZ2F0ZXdheSkK",
+      "text": "bad gateway (test gateway)\n"
+    }
+  },
+  "note": "test gateway fault injection; Retry-After header: None"
+}

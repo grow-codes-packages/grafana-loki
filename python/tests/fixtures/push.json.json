@@ -1,0 +1,50 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/loki/api/v1/push",
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body": {
+      "streams": [
+        {
+          "stream": {
+            "service_name": "sdk-verify",
+            "env": "test",
+            "run": "c023892b83",
+            "level": "info"
+          },
+          "values": [
+            [
+              "1795034767064713072",
+              "hello c023892b83 first"
+            ],
+            [
+              "1795034767065713072",
+              "hello c023892b83 second err"
+            ]
+          ]
+        },
+        {
+          "stream": {
+            "service_name": "sdk-verify",
+            "env": "test",
+            "run": "c023892b83",
+            "level": "error"
+          },
+          "values": [
+            [
+              "1795034767065713072",
+              "same-nanosecond other stream c023892b83"
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 204,
+    "contentType": "",
+    "body": ""
+  }
+}

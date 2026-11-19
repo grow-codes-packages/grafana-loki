@@ -1,0 +1,20 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/loki/api/v1/labels",
+    "query": {
+      "since": "5m"
+    },
+    "headers": {
+      "X-Scope-OrgID": "sdk-tenant-a"
+    }
+  },
+  "response": {
+    "status": 200,
+    "contentType": "application/json; charset=UTF-8",
+    "body": {
+      "status": "success"
+    }
+  },
+  "note": "ping candidate: cheap authenticated data API on the multi-tenant instance"
+}

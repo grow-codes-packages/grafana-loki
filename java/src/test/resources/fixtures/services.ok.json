@@ -1,0 +1,12 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/services"
+  },
+  "response": {
+    "status": 200,
+    "contentType": "text/plain; charset=utf-8",
+    "body": "memberlist-kv => Running\nring => Running\ningester-querier => Running\ningester => Running\nruler => Running\nserver => Running\nquery-scheduler-ring => Running\ncompactor => Running\nquerier => Running\nrule-evaluator => Running\nquery-frontend => Running\ndistributor => Running\ncache-generation-loader => Running\nstore => Running\nquery-frontend-tripperware => Running\nquery-scheduler => Running\n"
+  },
+  "note": "text/plain, one '<module> => <State>' per line"
+}

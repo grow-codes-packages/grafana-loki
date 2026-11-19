@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/loki/api/v1/query_range",
+    "query": {
+      "query": "{run=\"c023892b83\"}",
+      "start": "1795034467064713072",
+      "end": "1795035067794695577",
+      "limit": "100000"
+    }
+  },
+  "response": {
+    "status": 400,
+    "contentType": "text/plain; charset=utf-8",
+    "body": "max entries limit per query exceeded, limit > max_entries_limit_per_query (100000 > 5000)"
+  }
+}

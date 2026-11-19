@@ -1,0 +1,31 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/loki/api/v1/push",
+    "headers": {
+      "X-Scope-OrgID": "sdk-tenant-a"
+    },
+    "body": {
+      "streams": [
+        {
+          "stream": {
+            "service_name": "sdk-verify",
+            "run": "c023892b83",
+            "tenant": "a"
+          },
+          "values": [
+            [
+              "1795034767064713072",
+              "tenant-a only c023892b83"
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 204,
+    "contentType": "",
+    "body": ""
+  }
+}

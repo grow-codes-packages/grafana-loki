@@ -7,46 +7,61 @@ import {
   formatReport,
   runConformance,
 } from "../../src/testing/index.js";
-import { type MockServer, startServer } from "../helpers/server.js";
+import { type FakeLoki, startFakeLoki } from "../helpers/loki.js";
 
 const scenariosDir = fileURLToPath(new URL("../../../conformance/scenarios/", import.meta.url));
-let server: MockServer;
+let server: FakeLoki;
+const clients: LokiClient[] = [];
 
 beforeAll(async () => {
-  server = await startServer((req) => {
-    if (req.url === "/health") return { status: 200, body: { status: "ok" } };
-    if (req.url === "/version") return { status: 200, body: { version: "0.0.1" } };
-    if (req.url === "/v1/ping") return { status: 200, body: {} };
-    return { status: 404 };
-  });
+  server = await startFakeLoki();
 });
 
 afterAll(async () => {
+  await Promise.all(clients.map((c) => c.close()));
   await server.close();
 });
+
+function lokiClient(): LokiClient {
+  const c = new LokiClient({ url: server.url, retry: { maxRetries: 0 } });
+  clients.push(c);
+  return c;
+}
 
 function options(): ConformanceOptions {
   return {
     scenariosDir,
-    categories: ["core"],
+    categories: ["core", "logging"],
     factories: {
-      core: () => new LokiClient({ url: server.url, token: "conformance-token" }),
+      core: () => lokiClient(),
+      logging: (ctx) => {
+        const loki = lokiClient();
+        return {
+          client: loki.logClient({
+            batch: { flushIntervalMs: 50, ...(ctx.batchOptions ?? {}) },
+            resource: { "service.name": "conformance" },
+          }),
+          query: loki.logQueryClient(),
+        };
+      },
     },
-    capabilities: { core: ["version"] },
+    capabilities: { core: ["version"], logging: ["query", "tail", "labels", "streams"] },
   };
 }
 
-describe("conformance (core) against a local demo API", () => {
-  it("every core scenario passes", async () => {
+describe("conformance (core + logging) against a fake Loki", () => {
+  it("every scenario passes", async () => {
     const report = await runConformance(options());
     expect(report.failed, formatReport(report)).toBe(0);
     expect(report.skipped).toBe(0);
-    expect(report.results.map((r) => r.id)).toContain("core.health");
-  });
+    expect(report.results.map((r) => r.id)).toEqual(
+      expect.arrayContaining(["core.health", "logging.roundtrip", "logging.batch", "logging.redaction"]),
+    );
+  }, 30_000);
 
   for (const c of conformanceCases(options())) {
     it.skipIf(c.skip !== undefined)(`case ${c.id}`, async () => {
       expect((await c.run()).status).toBe("passed");
-    });
+    }, 30_000);
   }
 });

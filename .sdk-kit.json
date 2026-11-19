@@ -105,7 +105,7 @@
     },
     {
       "path": "CONTRIBUTING.md",
-      "sha256": "47d27dc2a38b7d5820774f8720429f3554ccaa5dcb4f9f5e1a7d080a73f5ab93",
+      "sha256": "35ead298259ca46b8ef10b4c43455eb6d00e8e0d9578b33e09e75ed96c8d1fcb",
       "generated": true
     },
     {
@@ -225,7 +225,7 @@
     },
     {
       "path": "docker/compose.yml",
-      "sha256": "f27e5b1a3f4a740c42b6a7518cc681c460e2f4bee69cb18a721eea88eab09ab8",
+      "sha256": "6d996d854c64c61eb238d56c9f394699d054a623e597a179572890ec5b846f1e",
       "generated": true
     },
     {
@@ -290,7 +290,7 @@
     },
     {
       "path": "docs/docker-testing.md",
-      "sha256": "27eac03a66d4ffb3062cf5b3456ea21252b9a763a04f422f2efe39a3f7bbde18",
+      "sha256": "15890fdd1895eff4043f0a6dddc5cfe39fb13edf6a8976fec36e9fdafdf11317",
       "generated": true
     },
     {
@@ -315,7 +315,7 @@
     },
     {
       "path": "docs/install.md",
-      "sha256": "24587f40d030860af2c10cd611b265b5bfc68e5cb1ccd605c83235a4667edf03",
+      "sha256": "ff6c3fcdb68344c170ab69cf06a9bde50cf3041c5b4b7a6638e7fe0d187d12ad",
       "generated": true
     },
     {
@@ -410,7 +410,7 @@
     },
     {
       "path": "examples/rust/Cargo.toml",
-      "sha256": "42d80dc2bc0fb5569683a17f7a455ed0508e0b160dd1444a1e84139e1cd0c8c1",
+      "sha256": "5504de7ccf7d1ccb79556eb8de74cccf1fcd49ad16aa39294560ce7bb67e7fc3",
       "generated": false
     },
     {
@@ -895,7 +895,7 @@
     },
     {
       "path": "java/src/main/java/codes/grow/packages/loki/logging/BatchProcessor.java",
-      "sha256": "525fe698a56a312a6c7f5ca22e8989f4be72d7d5cacaf3b881f07d838f7ca52d",
+      "sha256": "35b90c0dff01f4b584a540a896fb0e4c51c6a4b50366dac40566296cdea54dff",
       "generated": true
     },
     {
@@ -1150,7 +1150,7 @@
     },
     {
       "path": "java/src/test/java/codes/grow/packages/loki/logging/BatchProcessorTest.java",
-      "sha256": "c8f7f8b91d0e9e7836c2ab13d4d393bc5091d270e4098a824d21834d9197f1c7",
+      "sha256": "135c9cc19c1eefaa5d458e541a25b220033662d719c177842e9c31100a1c497e",
       "generated": true
     },
     {
@@ -1280,7 +1280,7 @@
     },
     {
       "path": "python/src/grow_grafana_loki/_core/errors.py",
-      "sha256": "c654c823fa3eab6d2ceb2a9a31a973f6b425bb502d4bdd9bf530609fa31c9a1b",
+      "sha256": "98d8edd5103570ca0361d4352bf3c983ef43a7c89b218e1468ccf40ef7d00a77",
       "generated": true
     },
     {
@@ -1495,7 +1495,7 @@
     },
     {
       "path": "rust/Cargo.toml",
-      "sha256": "b65eebfeeca4e899065f7d3f834cec3a05c648a121890d6ec510d3054c97e0e5",
+      "sha256": "e8bfab24f65f4c5bd78da7a2c2e3aceaf840a94ff97ca2cef7b66590a40fadcb",
       "generated": false
     },
     {
@@ -1505,7 +1505,7 @@
     },
     {
       "path": "rust/README.md",
-      "sha256": "4ca8eb178df5acd3602fb614479cf8b06648af7e51417513d0ec8c107b46897a",
+      "sha256": "c6d820c22619bd9812fe1a417bc8b14a6a3144de5dd197c95698d2b7095564de",
       "generated": false
     },
     {
@@ -1515,7 +1515,7 @@
     },
     {
       "path": "rust/integration/Cargo.toml",
-      "sha256": "c379d22b3542bacde3d76c9ee9966aeee33742e18579198d1e8ac5e8c5f92064",
+      "sha256": "c653c7c0a64b66813579d15246ffdf2489221a3b1b844a017584b646af03f1c7",
       "generated": false
     },
     {
@@ -1750,32 +1750,32 @@
     },
     {
       "path": "rust/tests/logging_adapters.rs",
-      "sha256": "30d1fc9d77c34af180ef47d24aaf44d0b596b558912fc5c11aff9889eb219c05",
+      "sha256": "68a113e77044bbcf242579a8e2157c3926c23074eb5de751c43ce6fba8c5ec6b",
       "generated": true
     },
     {
       "path": "rust/tests/logging_batch.rs",
-      "sha256": "21b1d16b346d37709e7638207c7e0ab97742249814b784f0a99835fc48446f30",
+      "sha256": "32de5c486a350e26f2fd795fc8c63b3ba7ae6d66a781106c1a5fd33142259ffc",
       "generated": true
     },
     {
       "path": "rust/tests/logging_client.rs",
-      "sha256": "f4ce28c704a1711c2ac9ee1fc1e31eaaae088012dce003e24b7a3a07bb4a70a4",
+      "sha256": "da876d9a0445fbfc1602ef379d549374e4c0175ac3d8e41f429649b9f6515bf7",
       "generated": true
     },
     {
       "path": "rust/tests/logging_conformance.rs",
-      "sha256": "6c3aec51d163aee9a59f03b98444b3de71c8a7a44146b7b7dab9d0a64080553d",
+      "sha256": "711efe1cdbc5e2c7abf35982a16b750c9c012e6de533b5904f7ed25b25e46cf6",
       "generated": true
     },
     {
       "path": "rust/tests/logging_query.rs",
-      "sha256": "f011ac764bce9d0826ec9463326f1c566efbaf2fe0d6492e202cf4fa0d21910c",
+      "sha256": "d88af3ba66e8cbe6319b01133de0e8f3b1d7c8c09b6fa6ce1b45d168d5b379f6",
       "generated": true
     },
     {
       "path": "rust/tests/logging_records.rs",
-      "sha256": "e3ac71f71ce70f5dac1f649513b1dcd6d1740086f1b4635a054c3b5fca952dae",
+      "sha256": "02335754f720c9334bd88a47f62b5718f99a55d4f0b3cfab9b8e7ef4171cebc0",
       "generated": true
     },
     {

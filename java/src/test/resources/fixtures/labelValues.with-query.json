@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/loki/api/v1/label/level/values",
+    "query": {
+      "start": "1795034467064713072",
+      "end": "1795035127811220634",
+      "query": "{run=\"c023892b83\"}"
+    }
+  },
+  "response": {
+    "status": 200,
+    "contentType": "application/json; charset=UTF-8",
+    "body": {
+      "status": "success",
+      "data": [
+        "error",
+        "info"
+      ]
+    }
+  }
+}

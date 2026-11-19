@@ -7,13 +7,15 @@ export interface RecordedRequest {
   url: string;
   headers: IncomingMessage["headers"];
   body: string;
+  /** Raw request body (binary payloads such as gzip or Snappy). */
+  rawBody: Buffer;
 }
 
 /** A canned response. */
 export interface MockResponse {
   status?: number;
   headers?: Record<string, string>;
-  body?: string | object;
+  body?: string | object | Buffer;
   /** Delay before answering, in ms. */
   delayMs?: number;
   /** Destroy the socket instead of answering. */
@@ -34,9 +36,15 @@ export interface MockServer {
 
 function send(res: ServerResponse, r: MockResponse): void {
   const body =
-    r.body === undefined ? "" : typeof r.body === "string" ? r.body : JSON.stringify(r.body);
+    r.body === undefined
+      ? ""
+      : typeof r.body === "string" || Buffer.isBuffer(r.body)
+        ? r.body
+        : JSON.stringify(r.body);
   const headers: Record<string, string> = {
-    ...(typeof r.body === "object" ? { "content-type": "application/json" } : {}),
+    ...(typeof r.body === "object" && !Buffer.isBuffer(r.body)
+      ? { "content-type": "application/json" }
+      : {}),
     ...r.headers,
   };
   res.writeHead(r.status ?? 200, headers);
@@ -59,6 +67,7 @@ export async function startServer(handler: MockHandler | MockResponse[]): Promis
         url: req.url ?? "",
         headers: req.headers,
         body: Buffer.concat(chunks).toString("utf8"),
+        rawBody: Buffer.concat(chunks),
       };
       const index = requests.length;
       requests.push(recorded);

@@ -26,19 +26,79 @@ const INSPECT = Symbol.for("nodejs.util.inspect.custom");
 /** Port text from the stack catalog; the default URL uses its first number. */
 const CATALOG_PORT = "3100";
 
-/** Options accepted by {@link LokiConfig} (all optional). */
-export interface LokiConfigOptions extends CommonConfigOptions {
-  /** API token sent as `Authorization: Bearer <token>` (env `GROW_GRAFANA_LOKI_TOKEN`). */
-  token?: string | Secret;
-}
+/** Longest tenant id Loki accepts (bytes). */
+export const MAX_TENANT_ID_LENGTH = 150;
+
+const TENANT_CHARS = /^[A-Za-z0-9!\-_.*'()]+$/;
+
+/** Label names allowed by Loki (Prometheus rules). */
+const LABEL_NAME = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
 /**
- * Vendor environment variables read after `GROW_GRAFANA_LOKI_*`, in order
- * (e.g. `BAO_ADDR` then `VAULT_ADDR`). Filled in by the service.
+ * Returns the problem with a tenant id (`X-Scope-OrgID`), or `undefined` when it is valid.
+ * Loki rules: non-empty, at most 150 bytes, not `.`/`..`, only `[A-Za-z0-9!-_.*'()]`. A `|`
+ * joins tenants for a multi-tenant query; it is accepted only when `multiTenantQueries` is set
+ * (the server must enable `multi_tenant_queries_enabled`), and each part must then be valid.
  */
-export const VENDOR_ENV: CommonVendorEnv & { token: readonly string[] } = {
-  url: [],
-  token: [],
+export function tenantIdProblem(id: string, multiTenantQueries = false): string | undefined {
+  if (id.includes("|")) {
+    if (!multiTenantQueries) {
+      return "tenant id must not contain '|' (multi-tenant queries are not enabled)";
+    }
+    for (const part of id.split("|")) {
+      const problem = tenantIdProblem(part, false);
+      if (problem !== undefined) return problem;
+    }
+    return undefined;
+  }
+  if (id === "") return "tenant id must not be empty";
+  if (new TextEncoder().encode(id).length > MAX_TENANT_ID_LENGTH) {
+    return `tenant id is too long (max ${MAX_TENANT_ID_LENGTH} bytes)`;
+  }
+  if (id === "." || id === "..") return "tenant id must not be '.' or '..'";
+  if (!TENANT_CHARS.test(id)) {
+    return "tenant id may only contain letters, digits and !-_.*'()";
+  }
+  return undefined;
+}
+
+/** Options accepted by {@link LokiConfig} (all optional). */
+export interface LokiConfigOptions extends CommonConfigOptions {
+  /** Tenant sent as `X-Scope-OrgID` (env `GROW_GRAFANA_LOKI_TENANT_ID`, `LOKI_TENANT_ID`). */
+  tenantId?: string;
+  /** Basic-auth user for gateways / Grafana Cloud (env `GROW_GRAFANA_LOKI_USERNAME`, `LOKI_USERNAME`). */
+  username?: string;
+  /** Basic-auth password or access token (env `GROW_GRAFANA_LOKI_PASSWORD`, `LOKI_PASSWORD`). */
+  password?: string | Secret;
+  /** Bearer token for gateways (env `GROW_GRAFANA_LOKI_BEARER_TOKEN`, `LOKI_BEARER_TOKEN`). */
+  bearerToken?: string | Secret;
+  /**
+   * Allows tenant ids joined with `|` (Loki multi-tenant queries; the server must enable
+   * `multi_tenant_queries_enabled`). Default `false`.
+   */
+  multiTenantQueries?: boolean;
+  /**
+   * Cardinality guard allowlist used by `push` and the log exporter: only these label names
+   * become index labels, everything else goes to structured metadata. Default
+   * `DEFAULT_ALLOWED_LABELS`.
+   */
+  allowedLabels?: readonly string[];
+  /** Sends every stream label of `push` as an index label (turns the guard off). Default `false`. */
+  disableLabelGuard?: boolean;
+}
+
+/** Vendor environment variables read after `GROW_GRAFANA_LOKI_*`, in order. */
+export const VENDOR_ENV: CommonVendorEnv & {
+  tenantId: readonly string[];
+  username: readonly string[];
+  password: readonly string[];
+  bearerToken: readonly string[];
+} = {
+  url: ["LOKI_URL"],
+  tenantId: ["LOKI_TENANT_ID"],
+  username: ["LOKI_USERNAME", "LOKI_BASIC_AUTH_USER"],
+  password: ["LOKI_PASSWORD", "LOKI_BASIC_AUTH_PASSWORD"],
+  bearerToken: ["LOKI_BEARER_TOKEN"],
 };
 
 /** Immutable configuration of {@link LokiClient}. */
@@ -59,8 +119,20 @@ export class LokiConfig implements CommonConfig {
   readonly userAgentSuffix?: string;
   readonly hooks?: Hooks;
   readonly logger?: ClientLogger;
-  /** API token. */
-  readonly token?: Secret;
+  /** Tenant (`X-Scope-OrgID`); not sent when unset. */
+  readonly tenantId?: string;
+  /** Basic-auth user. */
+  readonly username?: string;
+  /** Basic-auth password. */
+  readonly password?: Secret;
+  /** Bearer token. */
+  readonly bearerToken?: Secret;
+  /** Whether tenant ids joined with `|` are allowed. */
+  readonly multiTenantQueries: boolean;
+  /** Configured cardinality guard allowlist (`undefined` = `DEFAULT_ALLOWED_LABELS`). */
+  readonly allowedLabels?: readonly string[];
+  /** Whether `push` skips the cardinality guard. */
+  readonly disableLabelGuard: boolean;
 
   /** Applies defaults, validates (throws {@link ConfigError}) and freezes. */
   constructor(options: LokiConfigOptions = {}) {
@@ -76,8 +148,17 @@ export class LokiConfig implements CommonConfig {
     if (common.userAgentSuffix !== undefined) this.userAgentSuffix = common.userAgentSuffix;
     if (common.hooks !== undefined) this.hooks = common.hooks;
     if (common.logger !== undefined) this.logger = common.logger;
-    const token = Secret.from(options.token);
-    if (token !== undefined) this.token = token;
+    if (options.tenantId !== undefined && options.tenantId !== "") this.tenantId = options.tenantId;
+    if (options.username !== undefined && options.username !== "") this.username = options.username;
+    const password = Secret.from(options.password);
+    if (password !== undefined) this.password = password;
+    const bearer = Secret.from(options.bearerToken);
+    if (bearer !== undefined) this.bearerToken = bearer;
+    this.multiTenantQueries = options.multiTenantQueries ?? false;
+    if (options.allowedLabels !== undefined) {
+      this.allowedLabels = Object.freeze([...options.allowedLabels]);
+    }
+    this.disableLabelGuard = options.disableLabelGuard ?? false;
     this.validate();
     Object.freeze(this);
   }
@@ -92,30 +173,101 @@ export class LokiConfig implements CommonConfig {
    * Builds a config from the environment. Precedence: explicit `overrides` >
    * `GROW_GRAFANA_LOKI_<NAME>` > vendor variables ({@link VENDOR_ENV}) > defaults.
    */
-  static fromEnv(overrides: LokiConfigOptions = {}, env: EnvMap = process.env) {
+  static fromEnv(overrides: LokiConfigOptions = {}, env: EnvMap = process.env): LokiConfig {
     const reader = new EnvReader(LokiConfig.ENV_PREFIX, env);
     const fromEnv: LokiConfigOptions = readCommonEnv(reader, VENDOR_ENV);
-    const token = reader.secret("TOKEN", VENDOR_ENV.token);
-    if (token !== undefined) fromEnv.token = token;
+    const tenantId = reader.string("TENANT_ID", VENDOR_ENV.tenantId);
+    if (tenantId !== undefined) fromEnv.tenantId = tenantId;
+    const username = reader.string("USERNAME", VENDOR_ENV.username);
+    if (username !== undefined) fromEnv.username = username;
+    const password = reader.secret("PASSWORD", VENDOR_ENV.password);
+    if (password !== undefined) fromEnv.password = password;
+    const bearer = reader.secret("BEARER_TOKEN", VENDOR_ENV.bearerToken);
+    if (bearer !== undefined) fromEnv.bearerToken = bearer;
     const merged = mergeOptions<LokiConfigOptions>(fromEnv, overrides);
     return new LokiConfig(merged);
   }
 
-  /** Throws {@link ConfigError} when a setting is invalid. Service rules go here. */
+  /** A copy of this config with some fields replaced (validated again). */
+  with(overrides: LokiConfigOptions): LokiConfig {
+    const current: LokiConfigOptions = {
+      url: this.url,
+      connectTimeoutMs: this.connectTimeoutMs,
+      requestTimeoutMs: this.requestTimeoutMs,
+      totalTimeoutMs: this.totalTimeoutMs,
+      retry: this.retry,
+      tls: { ...this.tls },
+      headers: { ...this.headers },
+      ...(this.proxy === undefined ? {} : { proxy: this.proxy }),
+      ...(this.userAgentSuffix === undefined ? {} : { userAgentSuffix: this.userAgentSuffix }),
+      ...(this.hooks === undefined ? {} : { hooks: this.hooks }),
+      ...(this.logger === undefined ? {} : { logger: this.logger }),
+      ...(this.tenantId === undefined ? {} : { tenantId: this.tenantId }),
+      ...(this.username === undefined ? {} : { username: this.username }),
+      ...(this.password === undefined ? {} : { password: this.password }),
+      ...(this.bearerToken === undefined ? {} : { bearerToken: this.bearerToken }),
+      multiTenantQueries: this.multiTenantQueries,
+      ...(this.allowedLabels === undefined ? {} : { allowedLabels: this.allowedLabels }),
+      disableLabelGuard: this.disableLabelGuard,
+    };
+    return new LokiConfig({ ...current, ...overrides });
+  }
+
+  /** Throws {@link ConfigError} when a setting is invalid. */
   validate(): void {
     validateCommonConfig(this);
-    if (this.token?.reveal().trim() === "")
-      throw new ConfigError("invalid configuration: token must not be blank");
+    const problems: string[] = [];
+    if (this.tenantId !== undefined) {
+      const problem = tenantIdProblem(this.tenantId, this.multiTenantQueries);
+      if (problem !== undefined) problems.push(problem);
+    }
+    for (const name of this.allowedLabels ?? []) {
+      if (!LABEL_NAME.test(name) || name.startsWith("__")) {
+        problems.push(`allowedLabels contains an invalid label name ${JSON.stringify(name)}`);
+      }
+    }
+    if ((this.username === undefined) !== (this.password === undefined)) {
+      problems.push("username and password must be given together");
+    }
+    if (this.password !== undefined && this.bearerToken !== undefined) {
+      problems.push("basic auth (username/password) and bearerToken are mutually exclusive");
+    }
+    if (this.bearerToken?.reveal().trim() === "") problems.push("bearerToken must not be blank");
+    if (problems.length > 0) {
+      throw new ConfigError(`invalid configuration: ${problems.join("; ")}`);
+    }
+  }
+
+  /** The `Authorization` header value, when credentials are configured. */
+  authorizationHeader(): string | undefined {
+    if (this.bearerToken !== undefined) return `Bearer ${this.bearerToken.reveal()}`;
+    if (this.username !== undefined && this.password !== undefined) {
+      return `Basic ${basicCredentials(this.username, this.password.reveal())}`;
+    }
+    return undefined;
   }
 
   /** Credential values to redact from error messages and logs. */
   knownSecrets(): string[] {
-    return secretValues(this.token);
+    const out = secretValues(this.password, this.bearerToken);
+    if (this.username !== undefined && this.password !== undefined) {
+      out.push(basicCredentials(this.username, this.password.reveal()));
+    }
+    return out;
   }
 
   /** Debug form with every credential redacted. */
   toJSON(): Record<string, unknown> {
-    return { ...describeCommonConfig(this), token: this.token === undefined ? null : REDACTED };
+    return {
+      ...describeCommonConfig(this),
+      tenantId: this.tenantId ?? null,
+      username: this.username ?? null,
+      password: this.password === undefined ? null : REDACTED,
+      bearerToken: this.bearerToken === undefined ? null : REDACTED,
+      multiTenantQueries: this.multiTenantQueries,
+      allowedLabels: this.allowedLabels ?? null,
+      disableLabelGuard: this.disableLabelGuard,
+    };
   }
 
   toString(): string {
@@ -125,4 +277,8 @@ export class LokiConfig implements CommonConfig {
   [INSPECT](): string {
     return this.toString();
   }
+}
+
+function basicCredentials(username: string, password: string): string {
+  return Buffer.from(`${username}:${password}`, "utf8").toString("base64");
 }

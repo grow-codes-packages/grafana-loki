@@ -1,0 +1,27 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/loki/api/v1/labels",
+    "query": {
+      "start": "1795034467064713072",
+      "end": "1795035127807414305"
+    }
+  },
+  "response": {
+    "status": 200,
+    "contentType": "application/json; charset=UTF-8",
+    "body": {
+      "status": "success",
+      "data": [
+        "dedup",
+        "deployment_environment",
+        "enc",
+        "env",
+        "hdr",
+        "level",
+        "run",
+        "service_name"
+      ]
+    }
+  }
+}

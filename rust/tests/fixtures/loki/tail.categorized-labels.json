@@ -1,0 +1,43 @@
+{
+  "request": {
+    "method": "GET(websocket)",
+    "path": "/loki/api/v1/tail",
+    "query": {
+      "query": "{run=\"c023892b83\", tail=\"1\"}"
+    },
+    "headers": {
+      "X-Loki-Response-Encoding-Flags": "categorize-labels"
+    }
+  },
+  "response": {
+    "status": 101,
+    "frame": {
+      "streams": [
+        {
+          "stream": {
+            "env": "test",
+            "level": "info",
+            "run": "c023892b83",
+            "service_name": "sdk-verify",
+            "tail": "1"
+          },
+          "values": [
+            [
+              "1795035084588079388",
+              "tail marker c023892b83",
+              {
+                "structuredMetadata": {
+                  "detected_level": "info",
+                  "request_id": "tail-c023892b83"
+                }
+              }
+            ]
+          ]
+        }
+      ],
+      "encodingFlags": [
+        "categorize-labels"
+      ]
+    }
+  }
+}

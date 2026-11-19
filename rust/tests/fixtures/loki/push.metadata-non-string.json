@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/loki/api/v1/push",
+    "body": {
+      "streams": [
+        {
+          "stream": {
+            "run": "c023892b83"
+          },
+          "values": [
+            [
+              "1795035067669402248",
+              "meta int",
+              {
+                "n": 5
+              }
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 400,
+    "contentType": "text/plain; charset=utf-8",
+    "body": "loghttp.PushRequest.Streams: []loghttp.LogProtoStream: unmarshalerDecoder: Value is string, but can't find closing '\"' symbol, error found in #10 byte of ...|\"n\": 5}]]}]}|..., bigger context ...|: [[\"1795035067669402248\", \"meta int\", {\"n\": 5}]]}]}|...\n"
+  }
+}

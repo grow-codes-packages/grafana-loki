@@ -1,0 +1,36 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/loki/api/v1/push",
+    "headers": {
+      "Content-Type": "application/x-protobuf"
+    },
+    "body": {
+      "decoded": {
+        "streams": [
+          {
+            "labels": "{service_name=\"sdk-verify\", env=\"test\", run=\"c023892b83\", enc=\"protobuf\"}",
+            "entries": [
+              {
+                "timestamp": "1795034767069713072",
+                "line": "protobuf line c023892b83",
+                "structuredMetadata": [
+                  {
+                    "name": "request_id",
+                    "value": "pb-c023892b83"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "encoding": "PushRequest protobuf, Snappy block-compressed (no framing)"
+    }
+  },
+  "response": {
+    "status": 204,
+    "contentType": "",
+    "body": ""
+  }
+}
