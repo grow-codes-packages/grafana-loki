@@ -92,7 +92,7 @@
     <!-- service-owned properties (versions of the service's own dependencies) -->
     <!-- @sdk-kit:keep properties -->
     <!-- pure-Java Snappy (block format) for protobuf push; Apache-2.0, no native code -->
-    <aircompressor.version>0.27</aircompressor.version>
+    <aircompressor.version>2.0.3</aircompressor.version>
     <!-- @sdk-kit:endkeep -->
   </properties>
 
