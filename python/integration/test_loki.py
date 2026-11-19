@@ -237,8 +237,15 @@ def test_index_stats_volume_volume_range(client: sdk.LokiClient, pushed: tuple[s
         selector, start=start, target_labels=["level"], aggregate_by="labels", limit=10
     )
     assert {s.metric.get("level") for s in by_level.vector} == {""}
+    # like the Rust/Java suites: an end in the future and a longer budget (volume_range lags volume)
     ranged = until(
-        lambda: (r := client.volume_range(selector, start=start, step_s=10)).matrix and r
+        lambda: (
+            r := client.volume_range(
+                selector, start=start, end=time.time_ns() + 60_000_000_000, step_s=10
+            )
+        ).matrix
+        and r,
+        timeout=60,
     )
     assert ranged.result_type == "matrix"
     assert any(p.value > 0 for series in ranged.matrix for p in series.values)
