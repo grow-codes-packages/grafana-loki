@@ -201,7 +201,7 @@ func TestLokiCoreAndQuery(t *testing.T) {
 		t.Fatalf("volume %s %d %v", vol.ResultType, len(vol.Vector), err)
 	}
 	vr, err := c.VolumeRange(ctx, sel.String(), loki.VolumeOptions{Start: now.Add(-10 * time.Minute), End: time.Now().Add(time.Minute), Step: time.Minute})
-	if err != nil || (len(vr.Matrix) == 0 && len(vr.Vector) == 0) {
+	if err != nil || vr.ResultType != loki.ResultTypeMatrix || len(vr.Matrix) == 0 || len(vr.Vector) != 0 {
 		t.Fatalf("volume range %s %d/%d %v", vr.ResultType, len(vr.Matrix), len(vr.Vector), err)
 	}
 	flush(t, url)
@@ -386,6 +386,14 @@ func TestLokiLogging(t *testing.T) {
 		t.Fatalf("otlp record %+v %v", otlp, err)
 	}
 	if _, err := lq.WaitForLog(ctx, "protobuf exporter "+run, loki.WaitForLogOptions{Timeout: 30 * time.Second}); err != nil {
+		t.Fatal(err)
+	}
+	// PushOTLP: the direct form of the OTLP exporter.
+	if err := c.PushOTLP(ctx, []loki.LogRecord{{Timestamp: time.Now(), Body: "push otlp " + run, Severity: loki.SeverityInfo,
+		Resource: map[string]loki.AttrValue{"service.name": svc}}}, loki.OTLPPushOptions{Gzip: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lq.WaitForLog(ctx, "push otlp "+run, loki.WaitForLogOptions{Timeout: 30 * time.Second}); err != nil {
 		t.Fatal(err)
 	}
 

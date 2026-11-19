@@ -2,6 +2,7 @@ import { gunzipSync } from "node:zlib";
 import { uncompress } from "snappyjs";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  CardinalityGuard,
   LokiClient,
   Severity,
   decodeRpcStatusMessage,
@@ -32,7 +33,7 @@ describe("push (JSON)", () => {
   it("sends the recorded JSON body with structured metadata", async () => {
     const fx = fixture("push.json-structured-metadata");
     const s = await serve([fixtureResponse("push.json-structured-metadata")]);
-    const client = new LokiClient({ url: s.url, tenantId: "t1", ...fast });
+    const client = new LokiClient({ url: s.url, tenantId: "t1", ...fast, disableLabelGuard: true });
     const body = fx.request.body as {
       streams: {
         stream: Record<string, string>;
@@ -45,7 +46,7 @@ describe("push (JSON)", () => {
         entries: st.values.map(([ts, line, md]) => ({
           timestamp: ts,
           line,
-          ...(md === undefined ? {} : { metadata: md }),
+          ...(md === undefined ? {} : { structuredMetadata: md }),
         })),
       })),
     );
@@ -60,14 +61,14 @@ describe("push (JSON)", () => {
 
   it("accepts Date, bigint and RFC 3339 timestamps and gzip", async () => {
     const s = await serve([{ status: 204 }]);
-    const client = new LokiClient({ url: s.url, ...fast });
+    const client = new LokiClient({ url: s.url, ...fast, disableLabelGuard: true });
     await client.push(
       [
         {
           labels: { app: "x" },
           entries: [
             { timestamp: new Date(1_700_000_000_123), line: "a" },
-            { timestamp: 1_700_000_000_123_456_789n, line: "b", metadata: {} },
+            { timestamp: 1_700_000_000_123_456_789n, line: "b", structuredMetadata: {} },
             { timestamp: "2023-11-14T22:13:20.5Z", line: "c" },
           ],
         },
@@ -96,8 +97,46 @@ describe("push (JSON)", () => {
     await client.close();
   });
 
+  it("applies the cardinality guard unless disabled", async () => {
+    const s = await serve([{ status: 204 }, { status: 204 }, { status: 204 }]);
+    const client = new LokiClient({ url: s.url, ...fast });
+    const stream = {
+      labels: { service_name: "api", run: "r1", "bad-label": "x" },
+      entries: [
+        { timestamp: 1n, line: "a", structuredMetadata: { run: "own" } },
+        { timestamp: 2n, line: "b" },
+      ],
+    };
+    await client.push([stream]);
+    expect(JSON.parse(s.requests[0]!.body)).toEqual({
+      streams: [
+        {
+          stream: { service_name: "api" },
+          values: [
+            ["1", "a", { run: "own", "bad-label": "x" }],
+            ["2", "b", { run: "r1", "bad-label": "x" }],
+          ],
+        },
+      ],
+    });
+    const custom = new LokiClient({ url: s.url, ...fast, allowedLabels: ["run"] });
+    await custom.push([{ labels: { run: "r1", service_name: "api" }, entries: [{ line: "c" }] }]);
+    const body = JSON.parse(s.requests[1]!.body) as {
+      streams: { stream: Record<string, string>; values: [string, string, unknown][] }[];
+    };
+    expect(body.streams[0]!.stream).toEqual({ run: "r1" });
+    expect(body.streams[0]!.values[0]![2]).toEqual({ service_name: "api" });
+    expect(BigInt(body.streams[0]!.values[0]![0])).toBeGreaterThan(0n);
+    const off = new LokiClient({ url: s.url, ...fast, disableLabelGuard: true });
+    await off.push([{ labels: { run: "r1" }, entries: [{ timestamp: 3n, line: "d" }] }]);
+    expect(JSON.parse(s.requests[2]!.body).streams[0].stream).toEqual({ run: "r1" });
+    expect(new CardinalityGuard().allowed).toContain("service_name");
+    expect(new CardinalityGuard(["a"]).isAllowed("b")).toBe(false);
+    await Promise.all([client.close(), custom.close(), off.close()]);
+  });
+
   it("validates labels, metadata, lines and timestamps client side", async () => {
-    const client = new LokiClient({ url: "http://127.0.0.1:1" });
+    const client = new LokiClient({ url: "http://127.0.0.1:1", disableLabelGuard: true });
     const entry = { timestamp: new Date(), line: "x" };
     await expect(
       client.push([{ labels: { "bad-label": "v" }, entries: [entry] }]),
@@ -111,11 +150,16 @@ describe("push (JSON)", () => {
       /non-empty/,
     );
     await expect(
-      client.push([{ labels: { a: "b" }, entries: [{ ...entry, metadata: { "x-y": "1" } }] }]),
-    ).rejects.toThrow(/structured metadata key/);
+      client.push([
+        { labels: { a: "b" }, entries: [{ ...entry, structuredMetadata: { "": "1" } }] },
+      ]),
+    ).rejects.toThrow(/structured metadata name must not be empty/);
     await expect(
       client.push([
-        { labels: { a: "b" }, entries: [{ ...entry, metadata: { n: 1 as unknown as string } }] },
+        {
+          labels: { a: "b" },
+          entries: [{ ...entry, structuredMetadata: { n: 1 as unknown as string } }],
+        },
       ]),
     ).rejects.toThrow(/must be a string/);
     await expect(
@@ -222,7 +266,7 @@ describe("push (protobuf + snappy)", () => {
     ).decoded;
     const entry = decoded.streams[0]!.entries[0]!;
     const s = await serve([fixtureResponse("push.protobuf-snappy")]);
-    const client = new LokiClient({ url: s.url, ...fast });
+    const client = new LokiClient({ url: s.url, ...fast, disableLabelGuard: true });
     await client.push(
       [
         {
@@ -231,7 +275,7 @@ describe("push (protobuf + snappy)", () => {
             {
               timestamp: entry.timestamp,
               line: entry.line,
-              metadata: { request_id: "pb-c023892b83" },
+              structuredMetadata: { request_id: "pb-c023892b83" },
             },
           ],
         },

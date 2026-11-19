@@ -219,7 +219,19 @@ async fn otlp_exporter_body() {
         .mount(&server)
         .await;
     let c = client(&server.uri());
-    let exp = OtlpExporter::new(&c);
+    // push_otlp is the direct form of the exporter
+    c.push_otlp(&[], false).await.unwrap();
+    c.push_otlp(&[record()], true).await.unwrap();
+    let direct = server.received_requests().await.unwrap();
+    assert_eq!(direct.len(), 1);
+    assert_eq!(direct[0].headers.get("content-encoding").unwrap(), "gzip");
+    server.reset().await;
+    Mock::given(method("POST"))
+        .and(path("/otlp/v1/logs"))
+        .respond_with(fixture("otlpLogs.json").response())
+        .mount(&server)
+        .await;
+    let exp = sdk::LokiOtlpExporter::new(&c);
     assert!(format!("{exp:?}").contains("OtlpExporter"));
     assert_eq!(
         exp.export(&[], ExportOptions::default())
@@ -472,13 +484,31 @@ async fn search_order_and_cursors() {
         .unwrap();
     assert_eq!(next.records.len(), 1);
     let r = server.received_requests().await.unwrap();
-    let q: Vec<(String, String)> = r
-        .last()
+    let params = |i: usize| -> Vec<(String, String)> {
+        r[i].url
+            .query_pairs()
+            .map(|(k, v)| (k.into_owned(), v.into_owned()))
+            .collect()
+    };
+    // the page is truncated, so the boundary nanosecond is re-queried (start=T, end=T+1)
+    let boundary = params(r.len() - 1);
+    assert!(boundary.contains(&("limit".into(), "5000".into())));
+    let start: i128 = boundary
+        .iter()
+        .find(|(k, _)| k == "start")
         .unwrap()
-        .url
-        .query_pairs()
-        .map(|(k, v)| (k.into_owned(), v.into_owned()))
-        .collect();
+        .1
+        .parse()
+        .unwrap();
+    let end: i128 = boundary
+        .iter()
+        .find(|(k, _)| k == "end")
+        .unwrap()
+        .1
+        .parse()
+        .unwrap();
+    assert_eq!(end - start, 1);
+    let q = params(r.len() - 2);
     assert!(q.contains(&("query".into(), r#"{service_name=~".+"} |= "x""#.into())));
     assert!(q.contains(&("limit".into(), "2".into())));
 }

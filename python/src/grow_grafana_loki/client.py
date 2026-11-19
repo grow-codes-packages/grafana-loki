@@ -347,9 +347,22 @@ class LokiClient(_ClientBase):
         :class:`ValidationError`. Retrying is safe (Loki drops exact duplicates), so the
         transport replays the identical payload on 429/5xx. Empty ``streams`` sends nothing.
         """
-        call = push_call(
-            self.config, self.guard, streams, format=format, gzip=gzip, timeout_s=timeout_s
+        self._push(
+            streams, self.guard, format=format, gzip=gzip, timeout_s=timeout_s, cancel=cancel
         )
+
+    def _push(
+        self,
+        streams: Sequence[LokiStream],
+        guard: CardinalityGuard,
+        *,
+        format: PushFormat = "json",  # noqa: A002
+        gzip: bool = False,
+        timeout_s: float | None = None,
+        cancel: CancelToken | None = None,
+    ) -> None:
+        """``push`` with an explicit guard (the log exporter passes its own)."""
+        call = push_call(self.config, guard, streams, format=format, gzip=gzip, timeout_s=timeout_s)
         if call is not None:
             self._run(call, cancel)
 
@@ -744,9 +757,19 @@ class AsyncLokiClient(_ClientBase):
         timeout_s: float | None = None,
     ) -> None:
         """See :meth:`LokiClient.push`."""
-        call = push_call(
-            self.config, self.guard, streams, format=format, gzip=gzip, timeout_s=timeout_s
-        )
+        await self._push(streams, self.guard, format=format, gzip=gzip, timeout_s=timeout_s)
+
+    async def _push(
+        self,
+        streams: Sequence[LokiStream],
+        guard: CardinalityGuard,
+        *,
+        format: PushFormat = "json",  # noqa: A002
+        gzip: bool = False,
+        timeout_s: float | None = None,
+    ) -> None:
+        """``push`` with an explicit guard (the log exporter passes its own)."""
+        call = push_call(self.config, guard, streams, format=format, gzip=gzip, timeout_s=timeout_s)
         if call is not None:
             await self._run(call)
 

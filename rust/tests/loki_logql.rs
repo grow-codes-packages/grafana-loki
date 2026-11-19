@@ -18,6 +18,22 @@ fn ticket_example() {
 }
 
 #[test]
+fn parser_stages_and_label() {
+    let q = LogQL::selector([("app", "x")])
+        .label("env", "!=", "dev")
+        .unpack()
+        .regexp(r"(?P<ip>\S+)")
+        .pattern("<ip> <_>")
+        .line_format("{{.ip}}")
+        .build()
+        .unwrap();
+    assert_eq!(
+        q,
+        r#"{app="x", env!="dev"} | unpack | regexp "(?P<ip>\\S+)" | pattern "<ip> <_>" | line_format "{{.ip}}""#
+    );
+}
+
+#[test]
 fn selectors_and_stages() {
     let team = String::from("core");
     let q = LogQL::selector([("b", "2"), ("a", "1")]);

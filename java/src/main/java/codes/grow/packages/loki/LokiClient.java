@@ -201,14 +201,25 @@ public final class LokiClient implements AutoCloseable {
   }
 
   /**
-   * Maps Loki-specific cases onto the SPEC classes: a 500 is not transient unless its text says
-   * {@code Ingester is shutting down} (WAL disk-full throttling, decision 6).
+   * Maps Loki-specific cases onto the SPEC classes. Every HTTP 500 stays a retryable {@link
+   * UnavailableException} (SPEC 2.1); a 500/503 whose text says {@code Ingester is shutting down}
+   * (WAL disk at least 90 % full, or the ingester stopping; decision 6) becomes a retryable {@code
+   * UnavailableException} with a hint about the cause.
    */
   static LokiException mapError(LokiException e) {
-    if (e.httpStatus().orElse(0) != 500 || SHUTTING_DOWN.matcher(e.getMessage()).find()) {
+    String message = e.getMessage();
+    if (message == null || !SHUTTING_DOWN.matcher(message).find()) {
       return e;
     }
-    return new LokiServerException(e.getMessage(), 500, e.requestId().orElse(null), e.getCause());
+    if (!message.contains("WAL")) {
+      message += " (the Loki ingester is stopping or its WAL disk is at least 90 % full)";
+    }
+    return new UnavailableException(
+        message,
+        e.httpStatus().isPresent() ? e.httpStatus().getAsInt() : null,
+        e.requestId().orElse(null),
+        e.retryAfter().orElse(null),
+        e.getCause());
   }
 
   private static <T> CompletableFuture<T> call(Supplier<CompletableFuture<T>> body) {
@@ -488,7 +499,7 @@ public final class LokiClient implements AutoCloseable {
                   r -> {
                     if (r.status() == STATUS_INGESTION_BLOCKED) {
                       throw new LokiServerException(
-                          "push: ingestion is blocked for this tenant (HTTP 260)",
+                          "push: ingestion is blocked by the Loki administrator (HTTP 260)",
                           STATUS_INGESTION_BLOCKED,
                           r.requestId().orElse(null),
                           null);
@@ -731,6 +742,7 @@ public final class LokiClient implements AutoCloseable {
           q.put("query", logql);
           q.put("start", nanos(options.start().orElse(null), "start"));
           q.put("end", nanos(options.end().orElse(null), "end"));
+          q.put("since", options.since().map(d -> Nanos.duration(d, "since")).orElse(null));
           q.put("step", options.step().map(d -> Nanos.duration(d, "step")).orElse(null));
           q.put(
               "interval", options.interval().map(d -> Nanos.duration(d, "interval")).orElse(null));
@@ -1121,7 +1133,7 @@ public final class LokiClient implements AutoCloseable {
           checkOpen(op);
           Map<String, List<String>> q = new LinkedHashMap<>();
           q.put("query", List.of(logql));
-          options.start().ifPresent(s -> q.put("start", List.of(nanos(s, "start"))));
+          q.put("start", List.of(nanos(options.start().orElseGet(Instant::now), "start")));
           options.limit().ifPresent(l -> q.put("limit", List.of(Integer.toString(l))));
           if (delay != null) {
             q.put("delay_for", List.of(Long.toString(delay)));
@@ -1163,6 +1175,9 @@ public final class LokiClient implements AutoCloseable {
         .handle(
             (ws, err) -> {
               if (err != null) {
+                // Loki keeps the TCP connection of a rejected upgrade open for 120 s: release
+                // this one-off client (and its connection) instead of waiting for GC.
+                CompletableFuture.runAsync(() -> closeQuietly(http));
                 throw handshakeError(err, secrets);
               }
               tail.attach(ws);
@@ -1173,6 +1188,17 @@ public final class LokiClient implements AutoCloseable {
               }
               return tail;
             });
+  }
+
+  /** Closes a one-off WebSocket client on Java 21+ ({@code HttpClient} is AutoCloseable there). */
+  static void closeQuietly(HttpClient http) {
+    if (http instanceof AutoCloseable closeable) {
+      try {
+        closeable.close();
+      } catch (Exception ignored) {
+        // best effort: the JDK also closes the connection when the client is collected
+      }
+    }
   }
 
   private LokiException handshakeError(Throwable err, List<String> secrets) {

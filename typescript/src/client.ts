@@ -2,7 +2,7 @@
 
 import { gzipSync } from "node:zlib";
 import {
-  ConfigError,
+  CancelledError,
   type HealthStatus,
   HttpTransport,
   LokiError,
@@ -19,12 +19,14 @@ import { LokiConfig, type LokiConfigOptions, tenantIdProblem } from "./config.js
 import {
   LokiLogExporter,
   LokiOtlpExporter,
+  SKIP_LABEL_GUARD,
   recordsToOtlpJson,
   type LokiPusher,
   type OtlpPushOptions,
   type PushOptions,
 } from "./exporter.js";
 import {
+  CardinalityGuard,
   type CardinalityGuardOptions,
   type LokiStream,
   validateLabelName,
@@ -80,6 +82,8 @@ export interface QueryRangeOptions extends CallOptions {
   start?: LokiTime;
   /** Exclusive end. Default: now. */
   end?: LokiTime;
+  /** Relative start (milliseconds before `end`) used when `start` is unset. */
+  sinceMs?: number;
   /** Metric query resolution in milliseconds. */
   stepMs?: number;
   /** Stream sampling interval in milliseconds (log queries). */
@@ -96,8 +100,19 @@ export interface TimeRangeOptions extends CallOptions {
   end?: LokiTime;
 }
 
+/** Options of {@link LokiClient.indexStats} (same name as in the other languages). */
+export type IndexOptions = TimeRangeOptions;
+
+/** Options of {@link LokiClient.series}. */
+export interface SeriesOptions extends TimeRangeOptions {
+  /** Relative start (milliseconds before `end`) used when `start` is unset. */
+  sinceMs?: number;
+}
+
 /** Options of {@link LokiClient.labels} and {@link LokiClient.labelValues}. */
 export interface LabelsOptions extends TimeRangeOptions {
+  /** Relative start (milliseconds before `end`) used when `start` is unset. */
+  sinceMs?: number;
   /** Stream selector that scopes the result. */
   query?: string;
 }
@@ -119,8 +134,11 @@ export interface VolumeRangeOptions extends VolumeOptions {
 }
 
 /** Options of {@link LokiClient.tail}. */
-export interface TailStreamOptions extends TailCallbacks, CallOptions {
-  /** Replay entries from this time. Default: Loki replays the last hour (up to `limit`). */
+export interface LiveTailOptions extends TailCallbacks, CallOptions {
+  /**
+   * Replay entries from this time before streaming live ones. Default: now ("live only");
+   * without a start Loki would replay the last hour.
+   */
   start?: LokiTime;
   /** Maximum replayed entries (Loki default 100). */
   limit?: number;
@@ -141,18 +159,23 @@ export const TENANT_HEADER = "x-scope-orgid";
 
 const SHUTTING_DOWN = /ingester is shutting down/i;
 
-/** Maps Loki-specific error cases onto the SPEC classes (decision 6 + API.md §0). */
+/**
+ * Maps Loki-specific error cases onto the SPEC classes (decision 6 + API.md §0). Every HTTP 500
+ * stays a retryable `UnavailableError` (SPEC 2.1); "Ingester is shutting down" (HTTP 500/503: WAL
+ * disk at least 90 % full, or the ingester stopping) becomes a retryable `UnavailableError` with a
+ * hint about the cause.
+ */
 function mapLokiError(err: unknown): unknown {
-  if (!(err instanceof LokiError) || err.httpStatus !== 500) return err;
-  const details = {
-    httpStatus: 500,
+  if (!(err instanceof LokiError) || !SHUTTING_DOWN.test(err.message)) return err;
+  const message = err.message.includes("WAL")
+    ? err.message
+    : `${err.message} (the Loki ingester is stopping or its WAL disk is at least 90 % full)`;
+  return new UnavailableError(message, {
+    ...(err.httpStatus === undefined ? {} : { httpStatus: err.httpStatus }),
     ...(err.requestId === undefined ? {} : { requestId: err.requestId }),
+    ...(err.retryAfterMs === undefined ? {} : { retryAfterMs: err.retryAfterMs }),
     ...(err.cause === undefined ? {} : { cause: err.cause }),
-  };
-  // WAL disk-full throttling is transient; any other 500 from Loki is not.
-  return new UnavailableError(err.message, {
-    ...details,
-    retryable: SHUTTING_DOWN.test(err.message),
+    retryable: true,
   });
 }
 
@@ -212,6 +235,7 @@ export class LokiClient implements LokiPusher {
   readonly #ownsTransport: boolean;
   readonly #tails = new Set<LokiTail>();
   readonly #logClients = new Set<BatchingLogClient>();
+  readonly #guard: CardinalityGuard;
   #closed = false;
   #closing: Promise<void> | undefined;
 
@@ -223,6 +247,7 @@ export class LokiClient implements LokiPusher {
   ) {
     const cfg = LokiConfig.from(config);
     this.config = cfg;
+    this.#guard = new CardinalityGuard(cfg.allowedLabels);
     if (shared !== undefined) {
       this.#transport = shared.transport;
       this.#ownsTransport = false;
@@ -261,7 +286,7 @@ export class LokiClient implements LokiPusher {
    * does not close the shared connections. Throws `ValidationError` for an invalid id.
    */
   withTenant(id: string): LokiClient {
-    const problem = tenantIdProblem(id);
+    const problem = tenantIdProblem(id, this.config.multiTenantQueries);
     if (problem !== undefined) throw new ValidationError(`withTenant: ${problem}`);
     return new LokiClient(this.config.with({ tenantId: id }), {}, { transport: this.#transport });
   }
@@ -272,7 +297,7 @@ export class LokiClient implements LokiPusher {
 
   async #request<T>(options: RequestOptions): Promise<TransportResponse<T>> {
     if (this.#closed) {
-      throw new ConfigError(`${options.operation ?? options.path}: client is closed`);
+      throw new CancelledError(`${options.operation ?? options.path}: client is closed`);
     }
     try {
       return await this.#transport.request<T>({
@@ -374,8 +399,10 @@ export class LokiClient implements LokiPusher {
 
   /**
    * Pushes streams with `POST /loki/api/v1/push`. JSON by default (optionally gzip);
-   * `format: "protobuf"` sends a Snappy-compressed `PushRequest`. Labels are validated client
-   * side. Retrying is safe: Loki drops entries identical to stored ones (same labels,
+   * `format: "protobuf"` sends a Snappy-compressed `PushRequest`. The cardinality guard moves
+   * labels outside `config.allowedLabels` to every entry's structured metadata (unless
+   * `config.disableLabelGuard`), then labels are validated client side. Entries without a
+   * timestamp get "now". Retrying is safe: Loki drops entries identical to stored ones (same labels,
    * timestamp and line), so the push is marked idempotent and retried on 5xx and network
    * errors. Status 260 (ingestion blocked by the operator) throws a non-retryable error.
    */
@@ -383,19 +410,25 @@ export class LokiClient implements LokiPusher {
     const op = "push";
     const live = streams.filter((s) => s.entries.length > 0);
     if (live.length === 0) return;
-    const normalized: LokiStream[] = live.map((s) => {
+    const now = new Date();
+    const guard =
+      this.config.disableLabelGuard || options[SKIP_LABEL_GUARD] === true ? undefined : this.#guard;
+    const normalized: LokiStream[] = live.map((input) => {
+      const s = guard === undefined ? input : guard.apply(input);
       validateLabels(s.labels);
       return {
         labels: s.labels,
         entries: s.entries.map((e) => {
           if (typeof e.line !== "string") throw new ValidationError(`${op}: line must be a string`);
-          for (const [k, v] of Object.entries(e.metadata ?? {})) {
-            validateLabelName(k, "structured metadata key");
+          for (const [k, v] of Object.entries(e.structuredMetadata ?? {})) {
+            if (k === "") {
+              throw new ValidationError(`${op}: structured metadata name must not be empty`);
+            }
             if (typeof v !== "string") {
               throw new ValidationError(`${op}: structured metadata ${k} must be a string`);
             }
           }
-          return { ...e, timestamp: toNanos(e.timestamp, "timestamp") };
+          return { ...e, timestamp: toNanos(e.timestamp ?? now, "timestamp") };
         }),
       };
     });
@@ -413,8 +446,8 @@ export class LokiClient implements LokiPusher {
         streams: normalized.map((s) => ({
           stream: s.labels,
           values: s.entries.map((e) =>
-            e.metadata !== undefined && Object.keys(e.metadata).length > 0
-              ? [e.timestamp, e.line, e.metadata]
+            e.structuredMetadata !== undefined && Object.keys(e.structuredMetadata).length > 0
+              ? [e.timestamp, e.line, e.structuredMetadata]
               : [e.timestamp, e.line],
           ),
         })),
@@ -436,10 +469,13 @@ export class LokiClient implements LokiPusher {
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
     if (res.status === 260) {
-      throw new UnavailableError(`${op}: ingestion is blocked for this tenant (HTTP 260)`, {
-        httpStatus: 260,
-        retryable: false,
-      });
+      throw new UnavailableError(
+        `${op}: ingestion is blocked by the Loki administrator (HTTP 260)`,
+        {
+          httpStatus: 260,
+          retryable: false,
+        },
+      );
     }
   }
 
@@ -515,6 +551,8 @@ export class LokiClient implements LokiPusher {
           query: logql,
           start: optionalNanos(options.start, "start"),
           end: optionalNanos(options.end, "end"),
+          since:
+            options.sinceMs === undefined ? undefined : msToDuration(options.sinceMs, "sinceMs"),
           step: options.stepMs === undefined ? undefined : msToDuration(options.stepMs, "stepMs"),
           interval:
             options.intervalMs === undefined
@@ -538,6 +576,8 @@ export class LokiClient implements LokiPusher {
         {
           start: optionalNanos(options.start, "start"),
           end: optionalNanos(options.end, "end"),
+          since:
+            options.sinceMs === undefined ? undefined : msToDuration(options.sinceMs, "sinceMs"),
           query: options.query,
         },
         options,
@@ -558,6 +598,8 @@ export class LokiClient implements LokiPusher {
         {
           start: optionalNanos(options.start, "start"),
           end: optionalNanos(options.end, "end"),
+          since:
+            options.sinceMs === undefined ? undefined : msToDuration(options.sinceMs, "sinceMs"),
           query: options.query,
         },
         options,
@@ -568,7 +610,7 @@ export class LokiClient implements LokiPusher {
   /** Series matching any of the selectors: `GET /loki/api/v1/series` (at least one matcher). */
   async series(
     matchers: string | readonly string[],
-    options: TimeRangeOptions = {},
+    options: SeriesOptions = {},
   ): Promise<Record<string, string>[]> {
     const list = typeof matchers === "string" ? [matchers] : [...matchers];
     if (list.length === 0 || list.some((m) => m.trim() === "")) {
@@ -582,6 +624,8 @@ export class LokiClient implements LokiPusher {
           "match[]": list,
           start: optionalNanos(options.start, "start"),
           end: optionalNanos(options.end, "end"),
+          since:
+            options.sinceMs === undefined ? undefined : msToDuration(options.sinceMs, "sinceMs"),
         },
         options,
       ),
@@ -592,7 +636,7 @@ export class LokiClient implements LokiPusher {
    * Approximate index statistics: `GET /loki/api/v1/index/stats`. Reads the TSDB index only,
    * so data still in the ingester counts after the next chunk flush.
    */
-  async indexStats(query: string, options: TimeRangeOptions = {}): Promise<LokiIndexStats> {
+  async indexStats(query: string, options: IndexOptions = {}): Promise<LokiIndexStats> {
     checkQuery(query, "indexStats");
     return decodeIndexStats(
       await this.#getJson(
@@ -687,7 +731,7 @@ export class LokiClient implements LokiPusher {
   async tail(
     logql: string,
     onEntries: (streams: LokiStreamResult[], frame: LokiTailFrame) => void,
-    options: TailStreamOptions = {},
+    options: LiveTailOptions = {},
   ): Promise<LokiTail> {
     const op = "tail";
     checkQuery(logql, op);
@@ -703,11 +747,11 @@ export class LokiClient implements LokiPusher {
       }
     }
     if (this.#closed || this.#transport.closed) {
-      throw new ConfigError(`${op}: client is closed`);
+      throw new CancelledError(`${op}: client is closed`);
     }
     const url = this.#transport.buildUrl("/loki/api/v1/tail", {
       query: logql,
-      start: optionalNanos(options.start, "start"),
+      start: optionalNanos(options.start ?? new Date(), "start"),
       limit: options.limit,
       delay_for: delayFor,
     });
@@ -759,7 +803,7 @@ export class LokiClient implements LokiPusher {
         ? new LokiOtlpExporter(this)
         : new LokiLogExporter(this, {
             format: protocol ?? "json",
-            ...(allowedLabels === undefined ? {} : { allowedLabels }),
+            allowedLabels: allowedLabels ?? this.#guard.allowed,
           });
     const client = new BatchingLogClient(exporter, batching);
     this.#logClients.add(client);

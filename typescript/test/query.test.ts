@@ -84,6 +84,7 @@ describe("queryRange", () => {
       end: BigInt(q.end as string),
       limit: 100,
       direction: "forward",
+      sinceMs: 300_000,
       stepMs: 30_000,
       intervalMs: 1500,
     });
@@ -102,6 +103,7 @@ describe("queryRange", () => {
     expect(p.get("end")).toBe(q.end);
     expect(p.get("step")).toBe("30000ms");
     expect(p.get("interval")).toBe("1500ms");
+    expect(p.get("since")).toBe("300000ms");
     await client.close();
   });
 
@@ -164,7 +166,8 @@ describe("labels, labelValues, series", () => {
     ).toContain("service_name");
     expect(params(s.requests[0]!.url).get("start")).toBe("1000000000");
     expect(params(s.requests[0]!.url).get("query")).toBe('{a="b"}');
-    expect(await client.labels()).toEqual([]);
+    expect(await client.labels({ sinceMs: 60_000 })).toEqual([]);
+    expect(params(s.requests[1]!.url).get("since")).toBe("60000ms");
     await client.close();
   });
 
@@ -186,10 +189,11 @@ describe("labels, labelValues, series", () => {
   it("series sends repeated match[] and requires a matcher", async () => {
     const { client, s } = await clientFor(fixtureResponse("series.ok"));
     const matchers = fixture("series.ok").request.query!["match[]"] as string[];
-    const res = await client.series(matchers, { start: 1n, end: 2n });
+    const res = await client.series(matchers, { start: 1n, end: 2n, sinceMs: 1000 });
     expect(res).toHaveLength(4);
     expect(res[0]).toMatchObject({ service_name: "sdk-verify" });
     expect(params(s.requests[0]!.url).getAll("match[]")).toEqual(matchers);
+    expect(params(s.requests[0]!.url).get("since")).toBe("1000ms");
     await expect(client.series([])).rejects.toMatchObject({ code: "VALIDATION" });
     await expect(client.series(" ")).rejects.toMatchObject({ code: "VALIDATION" });
     await client.close();

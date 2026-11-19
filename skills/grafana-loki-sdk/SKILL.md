@@ -26,10 +26,16 @@ Prefer environment configuration so no credential is written into code:
 
 ```sh
 export GROW_GRAFANA_LOKI_URL=https://grafana-loki.example.internal
-export GROW_GRAFANA_LOKI_TOKEN=...            # from your secret store, never committed
+export GROW_GRAFANA_LOKI_TENANT_ID=team-a     # only for a multi-tenant Loki (X-Scope-OrgID)
+# gateway / Grafana Cloud only, from your secret store, never committed:
+# GROW_GRAFANA_LOKI_USERNAME + GROW_GRAFANA_LOKI_PASSWORD, or GROW_GRAFANA_LOKI_BEARER_TOKEN
 ```
 
-Precedence: explicit config value > `GROW_GRAFANA_LOKI_*` > vendor variables (`LOKI_URL`, `LOKI_TENANT_ID` (`X-Scope-OrgID`), `LOKI_USERNAME`/`LOKI_PASSWORD` or `LOKI_BEARER_TOKEN`, `GROW_GRAFANA_LOKI_*`) > default.
+Precedence: explicit config value > `GROW_GRAFANA_LOKI_*` > vendor variables (`LOKI_URL`,
+`LOKI_TENANT_ID`, `LOKI_USERNAME`/`LOKI_BASIC_AUTH_USER`, `LOKI_PASSWORD`/`LOKI_BASIC_AUTH_PASSWORD`,
+`LOKI_BEARER_TOKEN`) > default (`http://127.0.0.1:3100`, no tenant, no credentials). Basic and
+Bearer are mutually exclusive. Loki itself has no authentication; credentials are for gateways and
+Grafana Cloud. Code-only options: `allowedLabels`, `disableLabelGuard`, `multiTenantQueries`.
 Other variables: `…_CONNECT_TIMEOUT`, `…_REQUEST_TIMEOUT`, `…_TOTAL_TIMEOUT` (`10s`, `1500`),
 `…_MAX_RETRIES`, `…_CA_CERT`, `…_CLIENT_CERT`, `…_CLIENT_KEY`, `…_PROXY`. Environment proxies
 (`HTTPS_PROXY`) are ignored unless `proxy` is set.
@@ -42,8 +48,8 @@ try-with-resources).
 
 - `health()` never throws for an unhealthy service; check `healthy`.
 - `ping()` verifies credentials (`AUTHENTICATION` error when they are wrong).
-- All I/O is retried with jitter on 429/502/503/504 and connection errors; only idempotent calls
-  are retried on 500.
+- All I/O is retried with jitter on 429/502/503/504 and connection errors; idempotent calls
+  (all reads, and `push`, because Loki drops identical entries) also on 500.
 - Errors carry `code` (`CONFIG`, `AUTHENTICATION`, `PERMISSION_DENIED`, `NOT_FOUND`, `CONFLICT`,
   `RATE_LIMITED`, `VALIDATION`, `UNAVAILABLE`, `TIMEOUT`, `UNSUPPORTED`, `CANCELLED`), `retryable`,
   `httpStatus` and `requestId`. Branch on the code, not on the message text. Go:
@@ -57,6 +63,38 @@ winston, `tracing`/`log`, `slog`/zap, `logging`/structlog, Logback/Log4j2/JUL). 
 and redacted; call `close()` on shutdown so the queue is flushed.
 
 <!-- service:skill-usage — the service adds its own functions and examples here. -->
+
+### Grafana Loki functions
+
+| Task | Call (camelCase; snake_case in Python/Rust, PascalCase + `ctx` in Go) |
+| - | - |
+| write lines | `push([{labels, entries: [{line, timestamp?, structuredMetadata?}]}], {format: json\|protobuf, gzip})` |
+| write `LogRecord`s via Loki's OTLP endpoint | `pushOtlp(records)` or the OTLP log client |
+| logs over a time range | `queryRange(logql, {start, end, since, limit, direction})` → `streams[].entries[]` |
+| metric value now | `query('sum(count_over_time({service_name="x"}[5m]))')` (log selectors are rejected) |
+| label names / values / streams | `labels()`, `labelValues(name)`, `series(['{service_name="x"}'])` |
+| index size | `indexStats(q)`, `volume(q)`, `volumeRange(q)` (always a matrix; needs `volume_enabled`) |
+| live tail | `tail(logql, onEntries)` → handle with `stop()` (live only unless `start` is given) |
+| build LogQL safely | `LogQL.selector({...}).lineContains(...).json().where(f, op, v).build()` (Rust `where_`) |
+| another tenant | `client.withTenant("team-a")` |
+| application logging | `logClient()` + `logger("component")`; search with `logQueryClient().search(q, {limit, cursor})` (Go/Rust/Python: `LogQuery()` / `log_query()`) |
+
+Rules that avoid the common mistakes:
+
+- **Labels are an index, not a payload.** Only allowlisted label names (`service_name`, `level`,
+  `deployment_environment`, `host_name`, `job`, `namespace`, `pod`, `container`, …) stay labels;
+  `push` moves everything else to structured metadata. Never make request ids, user ids or trace
+  ids labels. Query metadata with a filter: `{service_name="api"} | request_id="r-1"`.
+- Selectors need at least one matcher that cannot match the empty string (`{a=~".*"}` is
+  rejected by Loki).
+- Timestamps are nanoseconds; entries older than the server's `reject_old_samples_max_age`
+  (7 days in Grow stacks) or about 10 minutes in the future are rejected with `VALIDATION`.
+- `401 no org id` (`AUTHENTICATION`) means the server needs a tenant: set `tenantId`.
+- "Ingester is shutting down" (`UNAVAILABLE`, retried) on every push means the Loki volume is at
+  least 90 % full.
+- Data is queryable right after a push; `indexStats` / `volumeRange` only see flushed chunks.
+
+Examples per language: `docs/functions/*.md` and `examples/<lang>/` in this repository.
 
 ## 4. Test code that uses the SDK
 

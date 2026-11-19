@@ -94,6 +94,26 @@ describe("LokiConfig", () => {
     expect(tenantIdProblem("..")).toMatch(/'\.'/);
     expect(tenantIdProblem("a|b")).toMatch(/\|/);
     expect(tenantIdProblem("bad/tenant")).toMatch(/only contain/);
+    expect(tenantIdProblem("a|b", true)).toBeUndefined();
+    expect(tenantIdProblem("a||b", true)).toMatch(/empty/);
+    expect(tenantIdProblem("a|bad/x", true)).toMatch(/only contain/);
+  });
+
+  it("multiTenantQueries, allowedLabels and disableLabelGuard", () => {
+    const c = new LokiConfig({ tenantId: "a|b", multiTenantQueries: true });
+    expect(c.multiTenantQueries).toBe(true);
+    expect(c.disableLabelGuard).toBe(false);
+    expect(c.allowedLabels).toBeUndefined();
+    const d = c.with({ allowedLabels: ["app", "env"], disableLabelGuard: true });
+    expect(d.tenantId).toBe("a|b");
+    expect(d.allowedLabels).toEqual(["app", "env"]);
+    expect(d.disableLabelGuard).toBe(true);
+    expect(d.toJSON()).toMatchObject({ multiTenantQueries: true, allowedLabels: ["app", "env"] });
+    expect(() => new LokiConfig({ allowedLabels: ["bad-name"] })).toThrow(/allowedLabels/);
+    expect(() => new LokiConfig({ allowedLabels: ["__x"] })).toThrow(/allowedLabels/);
+    const client = new LokiClient({ multiTenantQueries: true });
+    expect(client.withTenant("a|b").tenantId).toBe("a|b");
+    expect(() => new LokiClient().withTenant("a|b")).toThrow(/multi-tenant/);
   });
 
   it("core.redaction.config: toString/JSON/inspect hide credentials", () => {
@@ -301,7 +321,7 @@ describe("LokiClient status", () => {
     expect(() => root.withTenant("a|b")).toThrow(expect.objectContaining({ code: "VALIDATION" }));
     expect(() => root.withTenant("bad/tenant")).toThrow(/withTenant/);
     await a.close();
-    await expect(a.ping()).rejects.toMatchObject({ code: "CONFIG" });
+    await expect(a.ping()).rejects.toMatchObject({ code: "CANCELLED" });
     // the shared transport stays open for the parent
     await expect(root.withTenant("b").ping()).resolves.toBeGreaterThanOrEqual(0);
     await root.close();
@@ -313,7 +333,7 @@ describe("LokiClient status", () => {
     await client.health();
     await client.close();
     await client.close();
-    await expect(client.ping()).rejects.toMatchObject({ code: "CONFIG" });
+    await expect(client.ping()).rejects.toMatchObject({ code: "CANCELLED" });
   });
 
   it("fromEnv builds from GROW_* variables", async () => {
@@ -331,7 +351,7 @@ describe("LokiClient status", () => {
     }
   });
 
-  it("maps 500 to a non-retryable UnavailableError except 'Ingester is shutting down'", async () => {
+  it("maps every 500 to a retryable UnavailableError ('Ingester is shutting down' with a hint)", async () => {
     const s = await track(
       startServer((req) =>
         req.url.startsWith("/loki/api/v1/labels")
@@ -344,10 +364,11 @@ describe("LokiClient status", () => {
       code: "UNAVAILABLE",
       retryable: true,
       httpStatus: 500,
+      message: expect.stringContaining("WAL disk is at least 90 % full"),
     });
     await expect(client.buildInfo()).rejects.toMatchObject({
       code: "UNAVAILABLE",
-      retryable: false,
+      retryable: true,
       httpStatus: 500,
     });
     await client.close();

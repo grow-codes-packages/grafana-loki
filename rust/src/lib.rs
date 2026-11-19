@@ -65,9 +65,9 @@ pub use crate::config::LokiConfig;
 pub use crate::config::LokiConfigBuilder;
 
 pub use crate::exporter::{
-    records_to_streams, LogClientOptions, OtlpExporter, PushExporter, METADATA_OBSERVED_TIMESTAMP,
-    METADATA_SEVERITY_NUMBER, METADATA_SEVERITY_TEXT, METADATA_SPAN_ID, METADATA_TRACE_FLAGS,
-    METADATA_TRACE_ID,
+    records_to_streams, LogClientOptions, LokiLogExporter, LokiOtlpExporter, OtlpExporter,
+    PushExporter, METADATA_OBSERVED_TIMESTAMP, METADATA_SEVERITY_NUMBER, METADATA_SEVERITY_TEXT,
+    METADATA_SPAN_ID, METADATA_TRACE_FLAGS, METADATA_TRACE_ID, OTLP_SCOPE_NAME,
 };
 pub use crate::logql::{quote, LogQL, LogQLValue, Matcher};
 pub use crate::logquery::{entry_to_record, LogQuery};

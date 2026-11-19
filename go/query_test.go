@@ -227,6 +227,18 @@ func TestLabelsSeries(t *testing.T) {
 	})
 }
 
+func TestVolumeRangeVectorBecomesMatrix(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, _ *http.Request, _ int) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"run":"x"},"value":[1795033774.86,"731"]}]}}`))
+	})
+	vr, err := newLoki(t, ts.URL, nil).VolumeRange(t.Context(), `{run="x"}`, VolumeOptions{Step: time.Minute})
+	if err != nil || vr.ResultType != ResultTypeMatrix || len(vr.Vector) != 0 || len(vr.Matrix) != 1 ||
+		vr.Matrix[0].Metric["run"] != "x" || len(vr.Matrix[0].Values) != 1 || vr.Matrix[0].Values[0].Value != 731 {
+		t.Fatalf("%+v %v", vr, err)
+	}
+}
+
 func TestIndexAndVolume(t *testing.T) {
 	ts := newTestServer(t, fixtureRoutes(t, map[string]string{
 		pathStats:    "indexStats.after-flush",

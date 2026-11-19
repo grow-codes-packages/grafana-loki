@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { after, before, describe, test } from "node:test";
 import {
+  DEFAULT_ALLOWED_LABELS,
   LogQL,
   LokiClient,
   LokiConfig,
@@ -17,6 +18,8 @@ import { loadBootstrapEnv, runId } from "./env.ts";
 
 const run = `${runId}-${randomBytes(4).toString("hex")}`.replace(/[^a-zA-Z0-9_-]/g, "_");
 const clients: LokiClient[] = [];
+// The tests select streams by run/kind, so they extend the cardinality guard allowlist.
+const allowedLabels = [...DEFAULT_ALLOWED_LABELS, "run", "kind", "nasty"];
 
 function env(name: string): string {
   const value = process.env[name];
@@ -56,7 +59,9 @@ let loki: LokiClient;
 before(() => {
   loadBootstrapEnv();
   assert.ok(process.env.GROW_GRAFANA_LOKI_URL, "GROW_GRAFANA_LOKI_URL must be set");
-  loki = track(LokiClient.fromEnv({ retry: { maxRetries: 2, initialBackoffMs: 50 } }));
+  loki = track(
+    LokiClient.fromEnv({ retry: { maxRetries: 2, initialBackoffMs: 50 }, allowedLabels }),
+  );
 });
 
 after(async () => {
@@ -86,7 +91,7 @@ describe("push + query round trips", () => {
           {
             timestamp: new Date(now - 2),
             line: `json first ${run}`,
-            metadata: { request_id: `req-${run}` },
+            structuredMetadata: { request_id: `req-${run}` },
           },
           { timestamp: BigInt(now - 1) * 1_000_000n, line: `json second ${run}` },
         ],
@@ -119,6 +124,22 @@ describe("push + query round trips", () => {
     for (const s of res.streams) assert.equal(s.labels.run, run);
   });
 
+  test("push applies the cardinality guard (default allowlist)", async () => {
+    const plain = track(LokiClient.fromEnv({ retry: { maxRetries: 2, initialBackoffMs: 50 } }));
+    const service = `sdk-ts-guard-${run}`;
+    await plain.push([
+      {
+        labels: { service_name: service, run, kind: "guard" },
+        entries: [{ line: `guard ${run}` }],
+      },
+    ]);
+    const res = await plain.queryRange(`{service_name="${service}"} | run="${run}"`);
+    assert.equal(res.streams.length, 1);
+    assert.equal(res.streams[0]?.labels.run, undefined);
+    assert.equal(res.streams[0]?.entries[0]?.structuredMetadata.run, run);
+    assert.equal(res.streams[0]?.entries[0]?.structuredMetadata.kind, "guard");
+  });
+
   test("push (protobuf + snappy) → queryRange", async () => {
     await loki.push(
       [
@@ -128,7 +149,7 @@ describe("push + query round trips", () => {
             {
               timestamp: new Date(),
               line: `protobuf ${run}`,
-              metadata: { request_id: `pb-${run}` },
+              structuredMetadata: { request_id: `pb-${run}` },
             },
           ],
         },
@@ -311,7 +332,11 @@ describe("push + query round trips", () => {
 describe("multi-tenancy", () => {
   test("withTenant isolates tenants; no tenant → AuthenticationError", async () => {
     const root = track(
-      new LokiClient({ url: env("GROW_GRAFANA_LOKI_MULTI_TENANT_URL"), retry: { maxRetries: 0 } }),
+      new LokiClient({
+        url: env("GROW_GRAFANA_LOKI_MULTI_TENANT_URL"),
+        retry: { maxRetries: 0 },
+        allowedLabels,
+      }),
     );
     await assert.rejects(
       root.ping(),
@@ -330,7 +355,10 @@ describe("multi-tenancy", () => {
     assert.deepEqual((await b.queryRange(`{run="${run}"}`)).streams, []);
     assert.deepEqual(await b.labelValues("run", { query: `{run="${run}"}` }), []);
     const got: string[] = [];
-    const tail = await a.tail(`{run="${run}"}`, (s) => got.push(...lines(s)), { limit: 10 });
+    const tail = await a.tail(`{run="${run}"}`, (s) => got.push(...lines(s)), {
+      limit: 10,
+      start: new Date(Date.now() - 600_000), // replay: the line was pushed before the tail
+    });
     await until(
       async () => got.length,
       (n) => n > 0,
@@ -364,7 +392,11 @@ describe("auth gateway", () => {
     );
     assert.ok((await basic.ping()) >= 0);
     const bearer = track(
-      new LokiClient({ url: url(), bearerToken: env("GROW_GRAFANA_LOKI_AUTH_PROXY_BEARER_TOKEN") }),
+      new LokiClient({
+        url: url(),
+        bearerToken: env("GROW_GRAFANA_LOKI_AUTH_PROXY_BEARER_TOKEN"),
+        allowedLabels,
+      }),
     );
     await bearer.push([
       {
@@ -378,6 +410,7 @@ describe("auth gateway", () => {
     const got: string[] = [];
     const tail = await bearer.tail(`{run="${run}", kind="gateway"}`, (s) => got.push(...lines(s)), {
       limit: 5,
+      start: new Date(Date.now() - 600_000),
     });
     await until(
       async () => got.length,

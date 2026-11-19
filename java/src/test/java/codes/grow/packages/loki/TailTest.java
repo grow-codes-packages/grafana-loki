@@ -157,7 +157,8 @@ class TailTest {
     try (FakeWs ws = FakeWs.reject(500, "multiple org IDs present")) {
       LokiClient c = LokiClient.builder().url(ws.url()).build();
       assertThatThrownBy(() -> c.tail("{a=\"b\"}", f -> {}))
-          .isInstanceOf(LokiServerException.class);
+          .isInstanceOfSatisfying(
+              UnavailableException.class, e -> assertThat(e.retryable()).isTrue());
       c.close();
     }
     int port;

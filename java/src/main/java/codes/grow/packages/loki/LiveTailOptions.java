@@ -45,7 +45,8 @@ public final class LiveTailOptions {
   /**
    * Returns the replay start.
    *
-   * @return start, or empty (Loki replays the last hour)
+   * @return start, or empty (live only: the tail starts at the connection time; without a start
+   *     Loki itself would replay the last hour)
    */
   public Optional<Instant> start() {
     return Optional.ofNullable(start);
@@ -99,7 +100,7 @@ public final class LiveTailOptions {
     private Builder() {}
 
     /**
-     * Replays entries from this time ({@code Instant.now()} = live only).
+     * Replays entries from this time before streaming live ones (default: now, live only).
      *
      * @param start start
      * @return this builder

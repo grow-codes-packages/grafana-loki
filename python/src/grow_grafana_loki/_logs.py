@@ -35,12 +35,16 @@ __all__ = [
     "LokiLogExporter",
     "LokiLogQueryClient",
     "LokiOtlpExporter",
+    "MAX_QUERY_LIMIT",
     "STREAM_SELECTOR_ALL",
     "decode_cursor",
     "encode_cursor",
     "entry_to_record",
     "to_logql",
 ]
+
+#: Largest ``limit`` Loki accepts per query by default (``max_entries_limit_per_query``).
+MAX_QUERY_LIMIT = 5000
 
 #: Selector matching every stream (Loki adds ``service_name`` to every stream).
 STREAM_SELECTOR_ALL = '{service_name=~".+"}'
@@ -50,6 +54,7 @@ _RESOURCE_KEYS = {
     "service_name": "service.name",
     "service_namespace": "service.namespace",
     "service_version": "service.version",
+    "service_instance_id": "service.instance.id",
     "deployment_environment": "deployment.environment",
     "host_name": "host.name",
 }
@@ -57,10 +62,10 @@ _RESOURCE_KEYS = {
 
 def to_logql(query: str) -> str:
     """``query`` when it is LogQL (starts with ``{``), else a line filter over every stream:
-    ``{service_name=~".+"} |= "<text>"``."""
+    ``{service_name=~".+"} |= "<text>"`` (an empty query selects every stream)."""
     text = query.strip()
     if not text:
-        raise ValidationError("logs.search: query must not be empty")
+        return STREAM_SELECTOR_ALL
     if text.startswith("{"):
         return text
     return f"{STREAM_SELECTOR_ALL} |= {quote_logql(text)}"
@@ -151,8 +156,8 @@ class _SearchPlan:
         order: SearchOrder,
         cursor: str | None,
     ) -> None:
-        if isinstance(limit, bool) or limit < 1:
-            raise ValidationError("logs.search: limit must be a positive integer")
+        if isinstance(limit, bool) or not 1 <= limit <= MAX_QUERY_LIMIT:
+            raise ValidationError(f"logs.search: limit must be an integer 1..{MAX_QUERY_LIMIT}")
         if order not in ("asc", "desc"):
             raise ValidationError("logs.search: order must be 'asc' or 'desc'")
         self.logql = to_logql(query)
@@ -169,20 +174,55 @@ class _SearchPlan:
             else:
                 self.start = self.cursor_ts
 
+    @property
+    def fetch(self) -> int:
+        """Entries requested from Loki (page size plus the entries the cursor skips)."""
+        return min(self.limit + self.skip, MAX_QUERY_LIMIT)
+
+    @property
+    def direction(self) -> str:
+        return "forward" if self.order == "asc" else "backward"
+
     def kwargs(self) -> dict[str, Any]:
         return {
             "start": self.start,
             "end": self.end,
-            "limit": self.limit + self.skip,
-            "direction": "forward" if self.order == "asc" else "backward",
+            "limit": self.fetch,
+            "direction": self.direction,
         }
 
-    def page(self, result: QueryResult) -> LogSearchResult:
+    def _sorted(self, result: QueryResult) -> list[tuple[int, Mapping[str, str], StreamEntry]]:
         items = [(e.timestamp_ns, s.labels, e) for s in result.streams for e in s.entries]
         sign = 1 if self.order == "asc" else -1
         # time in the requested order; ties by label set, then line (ascending, as everywhere)
         items.sort(key=lambda item: (sign * item[0], label_set_string(item[1]), item[2].line))
+        return items
+
+    def boundary(self, result: QueryResult) -> int | None:
+        """The last nanosecond of a truncated result: Loki cut the page inside it in its own
+        order, so that nanosecond must be fetched completely (``start=T``, ``end=T+1``)."""
+        items = self._sorted(result)
+        if items and len(items) >= self.fetch:
+            return items[-1][0]
+        return None
+
+    def boundary_kwargs(self, boundary: int) -> dict[str, Any]:
+        return {
+            "start": boundary,
+            "end": boundary + 1,
+            "limit": MAX_QUERY_LIMIT,
+            "direction": self.direction,
+        }
+
+    def page(self, result: QueryResult, exact: QueryResult | None = None) -> LogSearchResult:
+        items = self._sorted(result)
         raw_count = len(items)
+        if exact is not None and items:
+            boundary = items[-1][0]
+            items = [item for item in items if item[0] != boundary]
+            items += [(e.timestamp_ns, s.labels, e) for s in exact.streams for e in s.entries]
+            sign = 1 if self.order == "asc" else -1
+            items.sort(key=lambda item: (sign * item[0], label_set_string(item[1]), item[2].line))
         if self.cursor_ts is not None and self.skip:
             skipped = 0
             kept = []
@@ -194,7 +234,7 @@ class _SearchPlan:
             items = kept
         page = items[: self.limit]
         next_cursor = None
-        if page and raw_count >= self.limit + self.skip:
+        if page and (raw_count >= self.fetch or len(items) > self.limit):
             last_ts = page[-1][0]
             at_last = sum(1 for item in page if item[0] == last_ts)
             if last_ts == self.cursor_ts:
@@ -231,7 +271,12 @@ class LokiLogQueryClient(BaseLogQueryClient):
         cursor: str | None = None,
     ) -> LogSearchResult:
         plan = _SearchPlan(query, start, end, limit, order, cursor)
-        return plan.page(self._client.query_range(plan.logql, **plan.kwargs()))
+        result = self._client.query_range(plan.logql, **plan.kwargs())
+        boundary = plan.boundary(result)
+        exact = None
+        if boundary is not None:
+            exact = self._client.query_range(plan.logql, **plan.boundary_kwargs(boundary))
+        return plan.page(result, exact)
 
     def tail(
         self,
@@ -276,7 +321,12 @@ class AsyncLokiLogQueryClient(AsyncBaseLogQueryClient):
         cursor: str | None = None,
     ) -> LogSearchResult:
         plan = _SearchPlan(query, start, end, limit, order, cursor)
-        return plan.page(await self._client.query_range(plan.logql, **plan.kwargs()))
+        result = await self._client.query_range(plan.logql, **plan.kwargs())
+        boundary = plan.boundary(result)
+        exact = None
+        if boundary is not None:
+            exact = await self._client.query_range(plan.logql, **plan.boundary_kwargs(boundary))
+        return plan.page(result, exact)
 
     async def tail(
         self,
@@ -330,8 +380,9 @@ class LokiLogExporter:
         if not records:
             return ExportResult(accepted=0)
         try:
-            self._client.push(
+            self._client._push(
                 records_to_streams(records, self._guard),
+                self._guard,
                 format=self._format,
                 gzip=gzip,
                 timeout_s=timeout_s,
@@ -364,8 +415,9 @@ class AsyncLokiLogExporter:
         if not records:
             return ExportResult(accepted=0)
         try:
-            await self._client.push(
+            await self._client._push(
                 records_to_streams(records, self._guard),
+                self._guard,
                 format=self._format,
                 gzip=gzip,
                 timeout_s=timeout_s,

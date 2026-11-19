@@ -175,6 +175,9 @@ fn ws_http_client(config: &CommonConfig) -> Result<reqwest::Client> {
     let mut builder = reqwest::Client::builder()
         .no_proxy()
         .http1_only()
+        // A rejected upgrade (401/400) must not leave its connection in the pool: Loki keeps
+        // it open for 120 s, so close it as soon as the response is read.
+        .pool_max_idle_per_host(0)
         .connect_timeout(config.connect_timeout())
         .use_rustls_tls();
     let tls = config.tls();

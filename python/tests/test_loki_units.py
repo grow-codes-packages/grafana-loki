@@ -356,11 +356,12 @@ def test_logql_builder() -> None:
         .where("level", "=", "error")
         .where("latency", "<", 0.25)
         .where("n", "==", 1e20)
+        .pipe(" drop pod ")
     )
     assert full.build() == (
         '{app="x", env!="dev", pod=~"web-.*"} != "debug" |~ "(?i)timeout" !~ "health" | logfmt '
         '| unpack | regexp "(?P<ip>\\\\S+)" | pattern "<ip> <_>" | line_format "{{.msg}}" '
-        '| level = "error" | latency < 0.25 | n == 100000000000000000000'
+        '| level = "error" | latency < 0.25 | n == 100000000000000000000 | drop pod'
     )
     nasty = 'q " b \\ n \n t \t ü 🚀'
     assert sdk.LogQL.quote(nasty) == sdk.quote_logql(nasty) == json.dumps(nasty, ensure_ascii=False)

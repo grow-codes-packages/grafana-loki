@@ -179,6 +179,36 @@ impl LogQL {
         self.with(None, Some("| logfmt".into()), None)
     }
 
+    /// Adds the `| unpack` parser (lines packed by Promtail's `pack` stage).
+    pub fn unpack(&self) -> LogQL {
+        self.with(None, Some("| unpack".into()), None)
+    }
+
+    /// Adds the `| regexp "<re>"` parser (named capture groups become labels).
+    pub fn regexp(&self, pattern: &str) -> LogQL {
+        self.with(None, Some(format!("| regexp {}", quote(pattern))), None)
+    }
+
+    /// Adds the `| pattern "<pattern>"` parser.
+    pub fn pattern(&self, pattern: &str) -> LogQL {
+        self.with(None, Some(format!("| pattern {}", quote(pattern))), None)
+    }
+
+    /// Adds the `| line_format "<template>"` stage.
+    pub fn line_format(&self, template: &str) -> LogQL {
+        self.with(
+            None,
+            Some(format!("| line_format {}", quote(template))),
+            None,
+        )
+    }
+
+    /// [`match_`](Self::match_) under its cross-language name: adds a label matcher (`=`,
+    /// `!=`, `=~` or `!~`) to the selector.
+    pub fn label(&self, name: &str, op: &str, value: &str) -> LogQL {
+        self.match_(name, op, value)
+    }
+
     /// Adds a label filter `| field op value` (`where` in the other languages). Strings take
     /// `=`, `!=`, `=~`, `!~` or `==`; numbers and durations take `==`, `!=`, `>`, `>=`, `<`,
     /// `<=`.

@@ -133,15 +133,20 @@ func (c *Client) Tail(ctx context.Context, logql string, onEntries func(TailFram
 	sctx, cancel := context.WithCancel(ctx)
 	handshake := c.cfg.ConnectTimeout + c.cfg.RequestTimeout
 	timer := time.AfterFunc(handshake, cancel)
+	hc := c.wsHTTPClient()
 	//nolint:bodyclose // coder/websocket owns the handshake response body ("You never need to close resp.Body")
 	conn, resp, err := websocket.Dial(sctx, u.String(), &websocket.DialOptions{
-		HTTPClient: c.wsHTTPClient(),
+		HTTPClient: hc,
 		HTTPHeader: header,
 	})
 	timedOut := !timer.Stop()
 	if err != nil {
 		cancel()
-		return nil, c.tailDialError(ctx, op, resp, err, timedOut, handshake)
+		dialErr := c.tailDialError(ctx, op, resp, err, timedOut, handshake)
+		// Loki keeps the TCP connection of a rejected upgrade open for 120 s:
+		// close it instead of leaving it in this one-off client's idle pool.
+		hc.CloseIdleConnections()
+		return nil, dialErr
 	}
 	conn.SetReadLimit(maxTailFrame)
 	s := &TailSession{cancel: cancel, done: make(chan struct{}), conn: conn}

@@ -37,9 +37,10 @@ describe("LogQL builder", () => {
       .where("level", "=", "error")
       .where("latency", "<", 0.25)
       .where("count", "==", 1e21)
+      .pipe(" drop pod ")
       .build();
     expect(q).toBe(
-      '{app="we\\"ird\\\\", env!="dev", pod=~"web-.+", ns!~"kube-.*"} |= "a\\nb\\t\\"c\\" ü 🚀" != "health" |~ "(?i)error" !~ "debug" | logfmt | unpack | regexp "(?P<ip>\\\\S+)" | pattern "<ip> - <_>" | line_format "{{.msg}}" | level = "error" | latency < 0.25 | count == 1000000000000000000000',
+      '{app="we\\"ird\\\\", env!="dev", pod=~"web-.+", ns!~"kube-.*"} |= "a\\nb\\t\\"c\\" ü 🚀" != "health" |~ "(?i)error" !~ "debug" | logfmt | unpack | regexp "(?P<ip>\\\\S+)" | pattern "<ip> - <_>" | line_format "{{.msg}}" | level = "error" | latency < 0.25 | count == 1000000000000000000000 | drop pod',
     );
     expect(LogQL.quote("x")).toBe('"x"');
     expect(quoteLogQL('"')).toBe('"\\""');
@@ -119,7 +120,7 @@ describe("labels and the cardinality guard", () => {
     expect(s.entries[0]).toEqual({
       timestamp: "1700000000000000000",
       line: "hello",
-      metadata: {
+      structuredMetadata: {
         service_version: "1.2",
         http_status: "503",
         user: '{"id":1}',
@@ -132,7 +133,7 @@ describe("labels and the cardinality guard", () => {
         trace_flags: "1",
       },
     });
-    expect(s.entries[1]!.metadata!.severity_text).toBe("WARN");
+    expect(s.entries[1]!.structuredMetadata!.severity_text).toBe("WARN");
   });
 
   it("honours a custom allow list and groups by label set", () => {
@@ -156,13 +157,13 @@ describe("labels and the cardinality guard", () => {
       { service_name: "api" },
       { service_name: "other" },
     ]);
-    expect(streams[0]!.entries[0]!.metadata).not.toHaveProperty("trace_id");
-    expect(streams[0]!.entries[0]!.metadata).not.toHaveProperty("level");
+    expect(streams[0]!.entries[0]!.structuredMetadata).not.toHaveProperty("trace_id");
+    expect(streams[0]!.entries[0]!.structuredMetadata).not.toHaveProperty("level");
     expect(streams[0]!.labels).not.toHaveProperty("__reserved");
-    expect(streams[1]!.entries[0]!.metadata).toMatchObject({
+    expect(streams[1]!.entries[0]!.structuredMetadata).toMatchObject({
       trace_id: base.traceId,
       trace_flags: "1",
     });
-    expect(streams[1]!.entries[0]!.metadata).not.toHaveProperty("span_id");
+    expect(streams[1]!.entries[0]!.structuredMetadata).not.toHaveProperty("span_id");
   });
 });

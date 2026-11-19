@@ -11,8 +11,8 @@ use grow_grafana_loki_integration::{configured, env, run_id};
 use sdk::blocking::LokiClient as BlockingClient;
 use sdk::core::{Hooks, RequestInfo, ResponseInfo};
 use sdk::logging::{
-    BatchOptions, LogClient, LogEntry, LogInput, LogQueryClient, SearchOptions, Severity,
-    SortOrder, TailOptions, WaitOptions,
+    BatchOptions, LogClient, LogEntry, LogInput, LogQueryClient, LogRecord, SearchOptions,
+    Severity, SortOrder, TailOptions, WaitOptions,
 };
 use sdk::{
     Entry, ErrorCode, IndexOptions, LabelsOptions, LiveTailOptions, LogClientOptions, LogQL,
@@ -290,7 +290,7 @@ async fn core_push_and_query() {
         .await
         .unwrap();
     assert!(
-        !vr.matrix.is_empty() || !vr.vector.is_empty(),
+        vr.result_type == "matrix" && !vr.matrix.is_empty() && vr.vector.is_empty(),
         "volume range {vr:?}"
     );
     flush(&c).await;
@@ -563,6 +563,15 @@ async fn logging_category() {
     assert_eq!(otlp.severity, Severity::Warn);
     assert_eq!(otlp.span_id.as_deref(), Some("b7ad6b7169203331"));
     lq.wait_for_log(&format!("protobuf exporter {run}"), WaitOptions::default())
+        .await
+        .unwrap();
+    // push_otlp: the direct form of the OTLP exporter
+    let mut direct = LogRecord::new(Severity::Info, format!("push otlp {run}"));
+    direct
+        .resource
+        .insert("service.name".into(), svc.as_str().into());
+    c.push_otlp(&[direct], true).await.unwrap();
+    lq.wait_for_log(&format!("push otlp {run}"), WaitOptions::default())
         .await
         .unwrap();
 

@@ -42,6 +42,9 @@ func (c *Client) LogQuery() *LogQuery { return &LogQuery{client: c} }
 // toLogQL turns a free-text query into LogQL.
 func toLogQL(query string) string {
 	q := strings.TrimSpace(query)
+	if q == "" {
+		return streamsSelector
+	}
 	if isLogQuery(q) {
 		return q
 	}
@@ -139,12 +142,39 @@ func (q *LogQuery) Search(ctx context.Context, query string, opts SearchOptions)
 			}
 		}
 	}
-	ro.Limit = min(opts.Limit+cur.skip, maxEntriesPerQuery)
-	res, err := q.client.QueryRange(ctx, toLogQL(query), ro)
+	fetch := min(opts.Limit+cur.skip, maxEntriesPerQuery)
+	ro.Limit = fetch
+	logql := toLogQL(query)
+	res, err := q.client.QueryRange(ctx, logql, ro)
 	if err != nil {
 		return LogSearchResult{}, err
 	}
 	entries := mergeStreams(res.Streams, asc)
+	truncated := len(entries) >= fetch
+	if truncated && len(entries) > 0 {
+		// Loki cut the result inside the boundary nanosecond in its own order:
+		// fetch that nanosecond completely (start=T, end=T+1) so the page and the
+		// cursor's skip count are deterministic.
+		boundary := entries[len(entries)-1].entry.Timestamp
+		exact, err := q.client.QueryRange(ctx, logql, QueryRangeOptions{
+			Start: boundary, End: boundary.Add(time.Nanosecond), Limit: maxEntriesPerQuery, Direction: ro.Direction,
+		})
+		if err != nil {
+			return LogSearchResult{}, err
+		}
+		streams := make([]StreamResult, 0, len(res.Streams)+len(exact.Streams))
+		for _, s := range res.Streams {
+			kept := make([]StreamEntry, 0, len(s.Entries))
+			for _, e := range s.Entries {
+				if !e.Timestamp.Equal(boundary) {
+					kept = append(kept, e)
+				}
+			}
+			streams = append(streams, StreamResult{Labels: s.Labels, Entries: kept})
+		}
+		streams = append(streams, exact.Streams...)
+		entries = mergeStreams(streams, asc)
+	}
 	if opts.Cursor != "" {
 		skipped := 0
 		for skipped < cur.skip && skipped < len(entries) && entries[skipped].entry.Timestamp.UnixNano() == cur.ts {
@@ -152,7 +182,7 @@ func (q *LogQuery) Search(ctx context.Context, query string, opts SearchOptions)
 		}
 		entries = entries[skipped:]
 	}
-	full := len(entries) >= opts.Limit
+	full := truncated || len(entries) > opts.Limit
 	if len(entries) > opts.Limit {
 		entries = entries[:opts.Limit]
 	}

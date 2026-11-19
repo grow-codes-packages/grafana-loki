@@ -90,9 +90,12 @@ export function encodePushRequest(streams: readonly LokiStream[]): Uint8Array {
     s.string(1, formatLabelSet(stream.labels));
     for (const entry of stream.entries) {
       const e = new Writer();
-      e.lengthDelimited(1, encodeTimestamp(BigInt(toNanos(entry.timestamp, "timestamp"))));
+      e.lengthDelimited(
+        1,
+        encodeTimestamp(BigInt(toNanos(entry.timestamp ?? new Date(), "timestamp"))),
+      );
       e.string(2, entry.line);
-      for (const [name, value] of Object.entries(entry.metadata ?? {})) {
+      for (const [name, value] of Object.entries(entry.structuredMetadata ?? {})) {
         const pair = new Writer();
         pair.string(1, name);
         pair.string(2, value);

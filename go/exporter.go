@@ -11,6 +11,9 @@ import (
 	"time"
 )
 
+// otlpScopeName is the instrumentation scope name used in OTLP payloads.
+const otlpScopeName = "grow-codes-grafana-loki"
+
 // Structured metadata keys the exporter writes for LogRecord fields (the same
 // names Loki derives from OTLP records).
 const (
@@ -37,6 +40,21 @@ type PushExporter struct {
 }
 
 var _ LogExporter = (*PushExporter)(nil)
+
+// LokiLogExporter is the cross-language name of PushExporter (the name the
+// TypeScript, Python and Java packages use).
+type LokiLogExporter = PushExporter //nolint:revive // cross-language name shared with the other packages
+
+// LokiOtlpExporter is the cross-language name of OTLPExporter.
+type LokiOtlpExporter = OTLPExporter //nolint:revive // cross-language name shared with the other packages
+
+// NewLokiLogExporter is NewPushExporter under its cross-language name.
+func NewLokiLogExporter(client *Client, format PushFormat) *LokiLogExporter {
+	return NewPushExporter(client, format)
+}
+
+// NewLokiOtlpExporter is NewOTLPExporter under its cross-language name.
+func NewLokiOtlpExporter(client *Client) *LokiOtlpExporter { return NewOTLPExporter(client) }
 
 // NewPushExporter returns an exporter for client using format ("" = JSON).
 func NewPushExporter(client *Client, format PushFormat) *PushExporter {
@@ -151,7 +169,7 @@ var _ LogExporter = (*OTLPExporter)(nil)
 
 // NewOTLPExporter returns an OTLP exporter for client.
 func NewOTLPExporter(client *Client) *OTLPExporter {
-	return &OTLPExporter{client: client, scope: "grow-codes-grafana-loki"}
+	return &OTLPExporter{client: client, scope: otlpScopeName}
 }
 
 // Export posts records grouped by resource.
@@ -159,20 +177,43 @@ func (e *OTLPExporter) Export(ctx context.Context, records []LogRecord, opts Exp
 	if len(records) == 0 {
 		return ExportResult{}, nil
 	}
-	body, err := json.Marshal(otlpRequest(records, e.scope))
+	if err := e.client.pushOTLP(ctx, records, opts.Gzip, e.scope); err != nil {
+		return exportFailure(len(records), err)
+	}
+	return ExportResult{Accepted: len(records)}, nil
+}
+
+// OTLPPushOptions are the options of Client.PushOTLP.
+type OTLPPushOptions struct {
+	// Gzip compresses the body.
+	Gzip bool
+}
+
+// PushOTLP posts records as OTLP/JSON to Loki's native OTLP endpoint
+// (POST /otlp/v1/logs). Loki promotes its default resource attributes
+// (service.name, deployment.environment, ...) to labels and stores everything
+// else as structured metadata. Empty records send nothing. Like Push it is
+// retried on 429/5xx (Loki drops exact duplicates).
+func (c *Client) PushOTLP(ctx context.Context, records []LogRecord, opts OTLPPushOptions) error {
+	if len(records) == 0 {
+		return nil
+	}
+	return c.pushOTLP(ctx, records, opts.Gzip, otlpScopeName)
+}
+
+func (c *Client) pushOTLP(ctx context.Context, records []LogRecord, gzip bool, scope string) error {
+	body, err := json.Marshal(otlpRequest(records, scope))
 	if err != nil {
-		return exportFailure(len(records), ValidationError("otlpLogs", "records cannot be encoded"))
+		return ValidationError("otlpLogs", "records cannot be encoded")
 	}
 	req := &request{Method: http.MethodPost, Path: pathOTLPLogs, Operation: "otlpLogs", Idempotent: true, ContentType: "application/json", Header: http.Header{}}
-	if opts.Gzip {
+	if gzip {
 		body = gzipBytes(body)
 		req.Header.Set("Content-Encoding", "gzip")
 	}
 	req.Body = body
-	if _, err := e.client.send(ctx, req); err != nil {
-		return exportFailure(len(records), err)
-	}
-	return ExportResult{Accepted: len(records)}, nil
+	_, err = c.send(ctx, req)
+	return err
 }
 
 // Shutdown is a no-op (the client owns the connections).

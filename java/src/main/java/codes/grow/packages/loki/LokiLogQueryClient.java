@@ -101,7 +101,7 @@ public final class LokiLogQueryClient implements LogQueryClient {
     if (trimmed.isEmpty()) {
       return ALL_STREAMS_SELECTOR;
     }
-    return ALL_STREAMS_SELECTOR + " |= " + LogQL.quote(query);
+    return ALL_STREAMS_SELECTOR + " |= " + LogQL.quote(trimmed);
   }
 
   /**

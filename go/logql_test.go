@@ -21,6 +21,11 @@ func TestLogQL(t *testing.T) {
 	if q2 != want {
 		t.Fatalf("\n got %s\nwant %s", q2, want)
 	}
+	q3 := Selector(map[string]string{"app": "x"}).Label("env", "!=", "dev").Unpack().
+		Regexp(`(?P<ip>\S+)`).Pattern("<ip> <_>").LineFormat("{{.ip}}").String()
+	if want3 := `{app="x", env!="dev"} | unpack | regexp "(?P<ip>\\S+)" | pattern "<ip> <_>" | line_format "{{.ip}}"`; q3 != want3 {
+		t.Fatalf("\n got %s\nwant %s", q3, want3)
+	}
 	if got := SelectorMatchers(Matcher{Name: "b", Op: "!=", Value: ""}, Matcher{Name: "a", Op: "=", Value: "1"}).String(); got != `{b!="", a="1"}` {
 		t.Fatal(got)
 	}

@@ -31,18 +31,31 @@ export const MAX_TENANT_ID_LENGTH = 150;
 
 const TENANT_CHARS = /^[A-Za-z0-9!\-_.*'()]+$/;
 
+/** Label names allowed by Loki (Prometheus rules). */
+const LABEL_NAME = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
 /**
  * Returns the problem with a tenant id (`X-Scope-OrgID`), or `undefined` when it is valid.
  * Loki rules: non-empty, at most 150 bytes, not `.`/`..`, only `[A-Za-z0-9!-_.*'()]`. A `|`
- * (multi-tenant query) is rejected because Loki disables multi-tenant queries by default.
+ * joins tenants for a multi-tenant query; it is accepted only when `multiTenantQueries` is set
+ * (the server must enable `multi_tenant_queries_enabled`), and each part must then be valid.
  */
-export function tenantIdProblem(id: string): string | undefined {
+export function tenantIdProblem(id: string, multiTenantQueries = false): string | undefined {
+  if (id.includes("|")) {
+    if (!multiTenantQueries) {
+      return "tenant id must not contain '|' (multi-tenant queries are not enabled)";
+    }
+    for (const part of id.split("|")) {
+      const problem = tenantIdProblem(part, false);
+      if (problem !== undefined) return problem;
+    }
+    return undefined;
+  }
   if (id === "") return "tenant id must not be empty";
   if (new TextEncoder().encode(id).length > MAX_TENANT_ID_LENGTH) {
     return `tenant id is too long (max ${MAX_TENANT_ID_LENGTH} bytes)`;
   }
   if (id === "." || id === "..") return "tenant id must not be '.' or '..'";
-  if (id.includes("|")) return "tenant id must not contain '|' (multi-tenant queries)";
   if (!TENANT_CHARS.test(id)) {
     return "tenant id may only contain letters, digits and !-_.*'()";
   }
@@ -59,6 +72,19 @@ export interface LokiConfigOptions extends CommonConfigOptions {
   password?: string | Secret;
   /** Bearer token for gateways (env `GROW_GRAFANA_LOKI_BEARER_TOKEN`, `LOKI_BEARER_TOKEN`). */
   bearerToken?: string | Secret;
+  /**
+   * Allows tenant ids joined with `|` (Loki multi-tenant queries; the server must enable
+   * `multi_tenant_queries_enabled`). Default `false`.
+   */
+  multiTenantQueries?: boolean;
+  /**
+   * Cardinality guard allowlist used by `push` and the log exporter: only these label names
+   * become index labels, everything else goes to structured metadata. Default
+   * `DEFAULT_ALLOWED_LABELS`.
+   */
+  allowedLabels?: readonly string[];
+  /** Sends every stream label of `push` as an index label (turns the guard off). Default `false`. */
+  disableLabelGuard?: boolean;
 }
 
 /** Vendor environment variables read after `GROW_GRAFANA_LOKI_*`, in order. */
@@ -101,6 +127,12 @@ export class LokiConfig implements CommonConfig {
   readonly password?: Secret;
   /** Bearer token. */
   readonly bearerToken?: Secret;
+  /** Whether tenant ids joined with `|` are allowed. */
+  readonly multiTenantQueries: boolean;
+  /** Configured cardinality guard allowlist (`undefined` = `DEFAULT_ALLOWED_LABELS`). */
+  readonly allowedLabels?: readonly string[];
+  /** Whether `push` skips the cardinality guard. */
+  readonly disableLabelGuard: boolean;
 
   /** Applies defaults, validates (throws {@link ConfigError}) and freezes. */
   constructor(options: LokiConfigOptions = {}) {
@@ -122,6 +154,11 @@ export class LokiConfig implements CommonConfig {
     if (password !== undefined) this.password = password;
     const bearer = Secret.from(options.bearerToken);
     if (bearer !== undefined) this.bearerToken = bearer;
+    this.multiTenantQueries = options.multiTenantQueries ?? false;
+    if (options.allowedLabels !== undefined) {
+      this.allowedLabels = Object.freeze([...options.allowedLabels]);
+    }
+    this.disableLabelGuard = options.disableLabelGuard ?? false;
     this.validate();
     Object.freeze(this);
   }
@@ -169,6 +206,9 @@ export class LokiConfig implements CommonConfig {
       ...(this.username === undefined ? {} : { username: this.username }),
       ...(this.password === undefined ? {} : { password: this.password }),
       ...(this.bearerToken === undefined ? {} : { bearerToken: this.bearerToken }),
+      multiTenantQueries: this.multiTenantQueries,
+      ...(this.allowedLabels === undefined ? {} : { allowedLabels: this.allowedLabels }),
+      disableLabelGuard: this.disableLabelGuard,
     };
     return new LokiConfig({ ...current, ...overrides });
   }
@@ -178,8 +218,13 @@ export class LokiConfig implements CommonConfig {
     validateCommonConfig(this);
     const problems: string[] = [];
     if (this.tenantId !== undefined) {
-      const problem = tenantIdProblem(this.tenantId);
+      const problem = tenantIdProblem(this.tenantId, this.multiTenantQueries);
       if (problem !== undefined) problems.push(problem);
+    }
+    for (const name of this.allowedLabels ?? []) {
+      if (!LABEL_NAME.test(name) || name.startsWith("__")) {
+        problems.push(`allowedLabels contains an invalid label name ${JSON.stringify(name)}`);
+      }
     }
     if ((this.username === undefined) !== (this.password === undefined)) {
       problems.push("username and password must be given together");
@@ -219,6 +264,9 @@ export class LokiConfig implements CommonConfig {
       username: this.username ?? null,
       password: this.password === undefined ? null : REDACTED,
       bearerToken: this.bearerToken === undefined ? null : REDACTED,
+      multiTenantQueries: this.multiTenantQueries,
+      allowedLabels: this.allowedLabels ?? null,
+      disableLabelGuard: this.disableLabelGuard,
     };
   }
 

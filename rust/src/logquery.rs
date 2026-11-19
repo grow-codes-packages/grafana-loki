@@ -61,7 +61,9 @@ impl LokiClient {
 /// Turns a free-text query into LogQL.
 fn to_logql(query: &str) -> String {
     let q = query.trim();
-    if is_log_query(q) {
+    if q.is_empty() {
+        STREAMS_SELECTOR.to_owned()
+    } else if is_log_query(q) {
         q.to_owned()
     } else {
         format!("{STREAMS_SELECTOR} |= {}", quote(q))
@@ -236,9 +238,41 @@ impl LogQueryClient for LogQuery {
             None => None,
         };
         let skip = cursor.map_or(0, |c| c.skip);
-        ro.limit = (limit + skip).min(MAX_ENTRIES_PER_QUERY);
-        let res = self.client.query_range(&to_logql(query), ro).await?;
-        let mut entries = merge_streams(&res.streams, asc);
+        let fetch = (limit + skip).min(MAX_ENTRIES_PER_QUERY);
+        ro.limit = fetch;
+        let direction = ro.direction;
+        let logql = to_logql(query);
+        let mut streams = self.client.query_range(&logql, ro).await?.streams;
+        let (truncated, boundary) = {
+            let merged = merge_streams(&streams, asc);
+            (
+                merged.len() >= fetch,
+                merged.last().map(|e| e.entry.timestamp),
+            )
+        };
+        if let Some(boundary) = boundary.filter(|_| truncated) {
+            // Loki cut the result inside the boundary nanosecond in its own order: fetch that
+            // nanosecond completely (start=T, end=T+1) so the page and the cursor's skip count
+            // are deterministic.
+            let exact = self
+                .client
+                .query_range(
+                    &logql,
+                    QueryRangeOptions {
+                        start: Some(boundary),
+                        end: Some(boundary + Duration::from_nanos(1)),
+                        limit: MAX_ENTRIES_PER_QUERY,
+                        direction,
+                        ..Default::default()
+                    },
+                )
+                .await?;
+            for s in &mut streams {
+                s.entries.retain(|e| e.timestamp != boundary);
+            }
+            streams.extend(exact.streams);
+        }
+        let mut entries = merge_streams(&streams, asc);
         if let Some(cur) = cursor {
             let skipped = entries
                 .iter()
@@ -247,7 +281,7 @@ impl LogQueryClient for LogQuery {
                 .count();
             entries.drain(..skipped);
         }
-        let full = entries.len() >= limit;
+        let full = truncated || entries.len() > limit;
         entries.truncate(limit);
         let records = entries
             .iter()

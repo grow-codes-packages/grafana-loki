@@ -69,7 +69,7 @@ export function toSearchLogQL(query: string): string {
   const trimmed = query.trim();
   if (trimmed.startsWith("{")) return trimmed;
   if (trimmed === "") return ALL_STREAMS_SELECTOR;
-  return `${ALL_STREAMS_SELECTOR} |= ${quoteLogQL(query)}`;
+  return `${ALL_STREAMS_SELECTOR} |= ${quoteLogQL(trimmed)}`;
 }
 
 /** Encodes a search cursor (`<ns>:<entries at ns already returned>`, base64). */

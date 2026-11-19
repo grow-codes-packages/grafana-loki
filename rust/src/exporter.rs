@@ -145,6 +145,9 @@ impl LogExporter for PushExporter {
     }
 }
 
+/// Instrumentation scope name used in OTLP payloads.
+pub const OTLP_SCOPE_NAME: &str = "grow-codes-grafana-loki";
+
 /// A `LogExporter` that posts OTLP/JSON logs to Loki's native OTLP endpoint
 /// (`/otlp/v1/logs`). Loki promotes `service.name`, `deployment.environment` and other default
 /// resource attributes to labels and stores everything else as structured metadata.
@@ -159,7 +162,7 @@ impl OtlpExporter {
     pub fn new(client: &LokiClient) -> Self {
         OtlpExporter {
             client: client.clone(),
-            scope: "grow-codes-grafana-loki".into(),
+            scope: OTLP_SCOPE_NAME.into(),
         }
     }
 }
@@ -170,19 +173,8 @@ impl LogExporter for OtlpExporter {
         if records.is_empty() {
             return Ok(ExportResult::default());
         }
-        let body = otlp_request(records, &self.scope).to_string().into_bytes();
-        let req = self
-            .client
-            .request(Method::POST, PATH_OTLP_LOGS, "otlpLogs")
-            .idempotent(true);
-        let req = if opts.gzip {
-            req.header("content-encoding", "gzip")
-                .body(crate::push::gzip_bytes(&body), "application/json")
-        } else {
-            req.body(body, "application/json")
-        };
-        match self.client.send(req).await {
-            Ok(_) => Ok(ExportResult::accepted(records.len())),
+        match self.client.send_otlp(records, opts.gzip, &self.scope).await {
+            Ok(()) => Ok(ExportResult::accepted(records.len())),
             Err(e) => export_failure(records.len(), e),
         }
     }
@@ -308,6 +300,31 @@ impl LogClientOptions {
 }
 
 impl LokiClient {
+    /// Sends log records as OTLP/JSON to Loki's native OTLP endpoint (`POST /otlp/v1/logs`).
+    /// Loki promotes its default resource attributes (`service.name`, `deployment.environment`,
+    /// ...) to labels and stores everything else as structured metadata. Empty `records` send
+    /// nothing. Like `push` it is retried on 429/5xx (Loki drops exact duplicates).
+    pub async fn push_otlp(&self, records: &[LogRecord], gzip: bool) -> Result<()> {
+        if records.is_empty() {
+            return Ok(());
+        }
+        self.send_otlp(records, gzip, OTLP_SCOPE_NAME).await
+    }
+
+    async fn send_otlp(&self, records: &[LogRecord], gzip: bool, scope: &str) -> Result<()> {
+        let body = otlp_request(records, scope).to_string().into_bytes();
+        let req = self
+            .request(Method::POST, PATH_OTLP_LOGS, "otlpLogs")
+            .idempotent(true);
+        let req = if gzip {
+            req.header("content-encoding", "gzip")
+                .body(crate::push::gzip_bytes(&body), "application/json")
+        } else {
+            req.body(body, "application/json")
+        };
+        self.send(req).await.map(|_| ())
+    }
+
     /// A batching `LogClient` that pushes to Loki through a JSON [`PushExporter`]. Closing the
     /// `LokiClient` flushes and closes it. Must be called inside a tokio runtime.
     pub fn new_log_client(&self, opts: LogClientOptions) -> Result<BatchingLogClient> {
@@ -343,3 +360,9 @@ impl LokiClient {
         Ok(client)
     }
 }
+
+/// Cross-language name of [`PushExporter`] (`LokiLogExporter` in TypeScript, Python and Java).
+pub type LokiLogExporter = PushExporter;
+
+/// Cross-language name of [`OtlpExporter`] (`LokiOtlpExporter` in TypeScript, Python and Java).
+pub type LokiOtlpExporter = OtlpExporter;

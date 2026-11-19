@@ -492,16 +492,18 @@ async fn index_stats_volume_format() {
         vec![544.0, 74.0, 187.0]
     );
     assert!(params(&last(&server).await).contains(&("step".into(), "60s".into())));
-    // volume_range answers with a vector when all data falls into one step
+    // Loki answers volume_range with a vector when all data falls into one step: the SDK
+    // converts it into a one-point-per-series matrix
     let vec = client(&format!("{}/vec", server.uri()));
     let vr = vec
         .volume_range("{run=\"x\"}", VolumeOptions::default())
         .await
         .unwrap();
     assert_eq!(
-        (vr.result_type.as_str(), vr.vector.len()),
-        (RESULT_TYPE_VECTOR, 1)
+        (vr.result_type.as_str(), vr.vector.len(), vr.matrix.len()),
+        (RESULT_TYPE_MATRIX, 0, 1)
     );
+    assert_eq!(vr.matrix[0].values.len(), 1);
     // volume disabled on the server: empty result is "no data", not an error
     let empty = client(&format!("{}/empty", server.uri()));
     assert!(empty

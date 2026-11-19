@@ -401,12 +401,24 @@ impl LokiClient {
         self.get_result("volume", PATH_VOLUME, q).await
     }
 
-    /// [`volume`](Self::volume) over time (`GET /loki/api/v1/index/volume_range`). Loki answers
-    /// with a matrix, but returns a vector (in `vector`) when all data falls into one step, so
-    /// check `result_type`.
+    /// [`volume`](Self::volume) over time (`GET /loki/api/v1/index/volume_range`). The result
+    /// is always a matrix (`result_type` `"matrix"`, data in `matrix`): Loki answers with a
+    /// vector when every series has a single point, and the SDK converts that vector into a
+    /// one-point-per-series matrix.
     pub async fn volume_range(&self, query: &str, opts: VolumeOptions) -> Result<QueryResult> {
         let q = volume_query("volumeRange", query, &opts, true)?;
-        self.get_result("volumeRange", PATH_VOLUME_RANGE, q).await
+        let mut res = self.get_result("volumeRange", PATH_VOLUME_RANGE, q).await?;
+        if res.result_type == RESULT_TYPE_VECTOR {
+            res.matrix = std::mem::take(&mut res.vector)
+                .into_iter()
+                .map(|s| SampleSeries {
+                    metric: s.metric,
+                    values: vec![s.value],
+                })
+                .collect();
+            res.result_type = RESULT_TYPE_MATRIX.to_owned();
+        }
+        Ok(res)
     }
 
     /// Asks Loki to parse and pretty-print a LogQL query (`GET /loki/api/v1/format_query`).

@@ -1,5 +1,6 @@
 package codes.grow.packages.loki;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 
@@ -43,6 +44,18 @@ public record LabelsOptions(
    */
   public static LabelsOptions of(Instant start, Instant end) {
     return new LabelsOptions(Optional.ofNullable(start), Optional.ofNullable(end), null);
+  }
+
+  /**
+   * Options for the window {@code [now - window, now]} (the {@code since} of the other languages,
+   * computed on the client).
+   *
+   * @param window positive duration
+   * @return the options
+   */
+  public static LabelsOptions last(Duration window) {
+    Instant now = Instant.now();
+    return of(now.minus(window), now);
   }
 
   /**

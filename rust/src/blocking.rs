@@ -154,6 +154,11 @@ impl LokiClient {
         self.block_on(self.inner.volume_range(query, opts))
     }
 
+    /// See [`AsyncClient::push_otlp`].
+    pub fn push_otlp(&self, records: &[LogRecord], gzip: bool) -> Result<()> {
+        self.block_on(self.inner.push_otlp(records, gzip))
+    }
+
     /// See [`AsyncClient::format_query`].
     pub fn format_query(&self, logql: &str) -> Result<String> {
         self.block_on(self.inner.format_query(logql))

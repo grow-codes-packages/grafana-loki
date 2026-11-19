@@ -9,6 +9,7 @@ import java.util.OptionalInt;
 public final class QueryRangeOptions {
   private final Instant start;
   private final Instant end;
+  private final Duration since;
   private final Duration step;
   private final Duration interval;
   private final Integer limit;
@@ -17,6 +18,7 @@ public final class QueryRangeOptions {
   private QueryRangeOptions(Builder b) {
     this.start = b.start;
     this.end = b.end;
+    this.since = b.since;
     this.step = b.step;
     this.interval = b.interval;
     this.limit = b.limit;
@@ -60,6 +62,15 @@ public final class QueryRangeOptions {
   }
 
   /**
+   * Returns the relative start used when no start is set.
+   *
+   * @return since, or empty
+   */
+  public Optional<Duration> since() {
+    return Optional.ofNullable(since);
+  }
+
+  /**
    * Returns the metric query resolution.
    *
    * @return step, or empty
@@ -99,6 +110,7 @@ public final class QueryRangeOptions {
   public static final class Builder {
     private Instant start;
     private Instant end;
+    private Duration since;
     private Duration step;
     private Duration interval;
     private Integer limit;
@@ -125,6 +137,17 @@ public final class QueryRangeOptions {
      */
     public Builder end(Instant end) {
       this.end = end;
+      return this;
+    }
+
+    /**
+     * Sets the relative start ({@code end - since}) used when no start is set.
+     *
+     * @param since positive duration
+     * @return this builder
+     */
+    public Builder since(Duration since) {
+      this.since = since;
       return this;
     }
 

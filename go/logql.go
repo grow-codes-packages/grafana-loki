@@ -108,6 +108,26 @@ func (q *LogQL) JSON() *LogQL { return q.with(nil, "| json", nil) }
 // Logfmt adds the | logfmt parser.
 func (q *LogQL) Logfmt() *LogQL { return q.with(nil, "| logfmt", nil) }
 
+// Unpack adds the | unpack parser (lines packed by Promtail's pack stage).
+func (q *LogQL) Unpack() *LogQL { return q.with(nil, "| unpack", nil) }
+
+// Regexp adds the | regexp "<re>" parser (named capture groups become labels).
+func (q *LogQL) Regexp(pattern string) *LogQL { return q.with(nil, "| regexp "+Quote(pattern), nil) }
+
+// Pattern adds the | pattern "<pattern>" parser.
+func (q *LogQL) Pattern(pattern string) *LogQL {
+	return q.with(nil, "| pattern "+Quote(pattern), nil)
+}
+
+// LineFormat adds the | line_format "<template>" stage.
+func (q *LogQL) LineFormat(template string) *LogQL {
+	return q.with(nil, "| line_format "+Quote(template), nil)
+}
+
+// Label is Match under its cross-language name: it adds a label matcher
+// (op =, !=, =~ or !~) to the selector.
+func (q *LogQL) Label(name, op, value string) *LogQL { return q.Match(name, op, value) }
+
 // Where adds a label filter: | field op value. String values take =, !=, =~,
 // !~ or ==; numbers (any Go integer or float) and time.Duration take ==, !=,
 // >, >=, <, <=.

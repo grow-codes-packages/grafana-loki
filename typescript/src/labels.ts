@@ -91,12 +91,12 @@ export function attrToString(value: AttrValue): string {
 
 /** One log line pushed to Loki. */
 export interface LokiEntry {
-  /** Entry time: `Date`, bigint nanoseconds or a decimal nanosecond string. */
-  timestamp: Date | bigint | string;
+  /** Entry time: `Date`, bigint nanoseconds or a decimal nanosecond string (unset = now). */
+  timestamp?: Date | bigint | string;
   /** The log line. */
   line: string;
   /** Structured metadata (string → string), stored next to the line but not indexed. */
-  metadata?: Readonly<Record<string, string>>;
+  structuredMetadata?: Readonly<Record<string, string>>;
 }
 
 /** A stream: one label set and its entries (`push` input). */
@@ -105,6 +105,48 @@ export interface LokiStream {
   labels: Readonly<Record<string, string>>;
   /** Entries of the stream (any order inside the ingest window). */
   entries: readonly LokiEntry[];
+}
+
+/**
+ * Keeps Loki's index small: only allowlisted label names become index labels, every other
+ * stream label is moved to the structured metadata of each entry (an entry's own metadata wins).
+ * `push` applies it unless `LokiConfig.disableLabelGuard` is set.
+ */
+export class CardinalityGuard {
+  readonly #allowed: ReadonlySet<string>;
+
+  /** A guard for `allowed` (default {@link DEFAULT_ALLOWED_LABELS}). */
+  constructor(allowed: readonly string[] = DEFAULT_ALLOWED_LABELS) {
+    this.#allowed = new Set(allowed);
+  }
+
+  /** The allowlist, sorted. */
+  get allowed(): string[] {
+    return [...this.#allowed].sort();
+  }
+
+  /** Whether `name` may be an index label. */
+  isAllowed(name: string): boolean {
+    return this.#allowed.has(name);
+  }
+
+  /** A copy of `stream` whose labels outside the allowlist are moved to every entry's metadata. */
+  apply(stream: LokiStream): LokiStream {
+    const labels: Record<string, string> = {};
+    const moved: Record<string, string> = {};
+    for (const [k, v] of Object.entries(stream.labels)) {
+      if (this.#allowed.has(k)) labels[k] = v;
+      else moved[k] = v;
+    }
+    if (Object.keys(moved).length === 0) return { labels, entries: stream.entries };
+    return {
+      labels,
+      entries: stream.entries.map((e) => ({
+        ...e,
+        structuredMetadata: { ...moved, ...(e.structuredMetadata ?? {}) },
+      })),
+    };
+  }
 }
 
 /** Options of the cardinality guard ({@link recordsToStreams}). */
@@ -159,7 +201,11 @@ export function recordsToStreams(
       stream = { labels, entries: [] };
       streams.set(key, stream);
     }
-    stream.entries.push({ timestamp: dateToNanos(record.timestamp), line: record.body, metadata });
+    stream.entries.push({
+      timestamp: dateToNanos(record.timestamp),
+      line: record.body,
+      structuredMetadata: metadata,
+    });
   }
   return [...streams.values()];
 }

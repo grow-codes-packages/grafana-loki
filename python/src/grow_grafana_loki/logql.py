@@ -160,6 +160,10 @@ class LogQL:
             raise ValidationError(f"LogQL: operator {op} cannot compare strings")
         return self._stage(f"| {field} {op} {quote_logql(value)}")
 
+    def pipe(self, stage: str) -> LogQL:
+        """Append a raw pipeline stage (``| <stage>``, e.g. ``drop level``); not escaped."""
+        return self._stage(f"| {stage.strip()}")
+
     def build(self) -> str:
         """Render the query.
 

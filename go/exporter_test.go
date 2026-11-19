@@ -75,7 +75,7 @@ func TestPushExporter(t *testing.T) {
 		ok.write(w)
 	})
 	c := newLoki(t, ts.URL, nil)
-	exp := NewPushExporter(c, "")
+	exp := NewLokiLogExporter(c, "")
 	res, err := exp.Export(t.Context(), sampleRecords(), ExportOptions{Gzip: true})
 	if err != nil || res.Accepted != 3 {
 		t.Fatalf("%+v %v", res, err)
@@ -117,7 +117,7 @@ func TestOTLPExporter(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	c := newLoki(t, ts.URL, func(cfg *Config) { cfg.TenantID = "t1" })
-	exp := NewOTLPExporter(c)
+	exp := NewLokiOtlpExporter(c)
 	recs := sampleRecords()
 	recs = append(recs, LogRecord{Body: "zero time", Attributes: map[string]AttrValue{"x": nil}})
 	res, err := exp.Export(t.Context(), recs, ExportOptions{})
@@ -158,6 +158,17 @@ func TestOTLPExporter(t *testing.T) {
 	}
 	if otlpAny(struct{}{})["stringValue"] == nil {
 		t.Fatal("fallback")
+	}
+	// PushOTLP is the direct form of the exporter.
+	if err := c.PushOTLP(t.Context(), recs[:1], OTLPPushOptions{Gzip: true}); err != nil || hdr.Get("Content-Encoding") != "gzip" {
+		t.Fatal(err)
+	}
+	if err := c.PushOTLP(t.Context(), nil, OTLPPushOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	srvErr := newTestServer(t, serveFixture(t, "otlpLogs.mt-no-tenant"))
+	if err := newLoki(t, srvErr.URL, nil).PushOTLP(t.Context(), recs, OTLPPushOptions{}); !errors.Is(err, ErrAuthentication) {
+		t.Fatal(err)
 	}
 	for name, code := range map[string]ErrorCode{"otlpLogs.empty-json": ErrorCodeValidation, "otlpLogs.mt-no-tenant": ErrorCodeAuthentication, "otlpLogs.invalid-body": ErrorCodeValidation} {
 		srv := newTestServer(t, serveFixture(t, name))

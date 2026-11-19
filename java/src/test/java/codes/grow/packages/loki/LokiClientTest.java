@@ -365,18 +365,20 @@ class LokiClientTest {
             e -> {
               assertThat(e.retryable()).isTrue();
               assertThat(e.getMessage()).contains("Ingester is shutting down");
+              assertThat(e.getMessage()).contains("WAL disk is at least 90 % full");
             });
     loki.enqueue(shutting).enqueue("push.json");
     client.push(List.of(s)); // recovers on retry
-    // other 500s are not transient
+    // every other 500 is a retryable UnavailableException too (SPEC 2.1)
     for (int i = 0; i < 4; i++) {
       loki.enqueue("queryRange.mt-pipe-tenants");
     }
     assertThatThrownBy(() -> client.queryRange("{a=\"b\"}"))
         .isInstanceOfSatisfying(
-            LokiServerException.class,
+            UnavailableException.class,
             e -> {
-              assertThat(e.retryable()).isFalse();
+              assertThat(e.retryable()).isTrue();
+              assertThat(e.httpStatus()).hasValue(500);
               assertThat(e.getMessage()).contains("multiple org IDs present");
             });
     // Loki's own ingestion limit text
@@ -509,6 +511,7 @@ class LokiClientTest {
             QueryRangeOptions.builder()
                 .start(T0)
                 .end(T0.plusSeconds(1))
+                .since(Duration.ofMinutes(5))
                 .step(Duration.ofSeconds(30))
                 .interval(Duration.ofNanos(10))
                 .limit(5000)
@@ -524,6 +527,7 @@ class LokiClientTest {
     assertThat(req.param("start")).isEqualTo("1795034767064713072");
     assertThat(req.param("end")).isEqualTo("1795034768064713072");
     assertThat(req.param("step")).isEqualTo("30000ms");
+    assertThat(req.param("since")).isEqualTo("300000ms");
     assertThat(req.param("interval")).isEqualTo("1ms");
     assertThat(req.param("direction")).isEqualTo("backward");
     loki.enqueue("queryRange.metric-matrix");
@@ -565,6 +569,9 @@ class LokiClientTest {
     loki.enqueue("labelValues.unknown-label");
     assertThat(client.labelValues("does_not_exist", LabelsOptions.of(null, T0))).isEmpty();
     assertThat(loki.last().param("start")).isNull();
+    loki.enqueue("labelValues.unknown-label");
+    assertThat(client.labelValues("x", LabelsOptions.last(Duration.ofMinutes(1)))).isEmpty();
+    assertThat(loki.last().param("start")).isNotNull();
     assertThatThrownBy(() -> client.labelValues("bad-name"))
         .isInstanceOf(ValidationException.class)
         .hasMessageContaining("labelValues");
@@ -651,9 +658,32 @@ class LokiClientTest {
     assertThat(LokiClient.mapError(nf)).isSameAs(nf);
     LokiException plain500 =
         LokiException.of(ErrorCode.UNAVAILABLE, "boom (HTTP 500)", 500, "rid", null, null);
-    assertThat(LokiClient.mapError(plain500))
-        .isInstanceOf(LokiServerException.class)
-        .satisfies(e -> assertThat(e.requestId()).contains("rid"));
+    assertThat(LokiClient.mapError(plain500)).isSameAs(plain500);
+    assertThat(plain500.retryable()).isTrue();
+    LokiException wal =
+        LokiException.of(
+            ErrorCode.UNAVAILABLE,
+            "push: Ingester is shutting down (HTTP 503)",
+            503,
+            "rid",
+            java.time.Duration.ofSeconds(1),
+            null);
+    assertThat(LokiClient.mapError(wal))
+        .isInstanceOf(UnavailableException.class)
+        .satisfies(
+            e -> {
+              assertThat(e.retryable()).isTrue();
+              assertThat(e.requestId()).contains("rid");
+              assertThat(e.httpStatus()).hasValue(503);
+              assertThat(e.retryAfter()).contains(java.time.Duration.ofSeconds(1));
+              assertThat(e.getMessage()).contains("WAL disk");
+            });
+    LokiException walHint =
+        LokiException.of(
+            ErrorCode.UNAVAILABLE, "Ingester is shutting down WAL", null, null, null, null);
+    assertThat(LokiClient.mapError(walHint).getMessage())
+        .isEqualTo("Ingester is shutting down WAL");
+    LokiClient.closeQuietly(java.net.http.HttpClient.newHttpClient());
     LokiException net = LokiException.of(ErrorCode.UNAVAILABLE, "net", null, null, null, null);
     assertThat(LokiClient.mapError(net)).isSameAs(net);
     assertThat(LokiClient.sdkError(new IllegalStateException("x"), "op"))

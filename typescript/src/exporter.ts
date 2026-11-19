@@ -15,6 +15,12 @@ import { dateToNanos } from "./time.js";
 /** Wire format of `push`. */
 export type PushFormat = "json" | "protobuf";
 
+/**
+ * Internal push option: the streams were already built by the cardinality guard (the log
+ * exporter), so `push` must not apply the config's guard a second time. @internal
+ */
+export const SKIP_LABEL_GUARD: unique symbol = Symbol("grow.loki.skipLabelGuard");
+
 /** Options of a push call. */
 export interface PushOptions {
   /** `json` (default) or `protobuf` (Snappy-compressed `PushRequest`). */
@@ -22,6 +28,8 @@ export interface PushOptions {
   /** Gzip the JSON body (ignored for protobuf, which is Snappy-compressed). Default false. */
   gzip?: boolean;
   signal?: AbortSignal;
+  /** @internal */
+  [SKIP_LABEL_GUARD]?: boolean;
 }
 
 /** Options of an OTLP push call. */
@@ -73,6 +81,7 @@ export class LokiLogExporter implements LogExporter {
       this.#pusher.push(recordsToStreams(records, this.#options), {
         format: this.#options.format ?? "json",
         gzip: opts.gzip,
+        [SKIP_LABEL_GUARD]: true,
         ...(opts.signal === undefined ? {} : { signal: opts.signal }),
       }),
     );

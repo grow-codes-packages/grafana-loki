@@ -32,8 +32,7 @@ def streams_body(*streams: tuple[dict[str, str], list[list[Any]]]) -> dict[str, 
 def test_to_logql_and_cursor() -> None:
     assert sdk.to_logql(' {a="b"} |= "x" ') == '{a="b"} |= "x"'
     assert sdk.to_logql('free "text"') == '{service_name=~".+"} |= "free \\"text\\""'
-    with pytest.raises(sdk.ValidationError):
-        sdk.to_logql("  ")
+    assert sdk.to_logql("  ") == sdk.STREAM_SELECTOR_ALL
     from grow_grafana_loki._logs import decode_cursor, encode_cursor
 
     assert decode_cursor(encode_cursor(1795034767064713072, 3)) == (1795034767064713072, 3)
@@ -97,6 +96,13 @@ def test_search_desc_paging_with_cursor(server: MockServer) -> None:
                 ({"service_name": "b"}, [[str(t + 1), "b1"]]),
             )
         ),
+        # the page was truncated: the boundary nanosecond t+1 is fetched completely
+        json_reply(
+            streams_body(
+                ({"service_name": "a"}, [[str(t + 1), "a1"]]),
+                ({"service_name": "b"}, [[str(t + 1), "b1"]]),
+            )
+        ),
         # page 2 re-queries end = t+2 (exclusive) and skips the two entries at t+1 already seen
         json_reply(
             streams_body(
@@ -109,9 +115,11 @@ def test_search_desc_paging_with_cursor(server: MockServer) -> None:
     page1 = q.search('{service_name=~"a|b"}', limit=3)
     assert [r.body for r in page1.records] == ["n2", "a1", "b1"]
     assert page1.next_cursor
-    first_params = query_of(last(server, RANGE))
-    assert first_params["direction"] == ["backward"]
-    assert first_params["limit"] == ["3"]
+    boundary_params = query_of(last(server, RANGE))
+    assert boundary_params["start"] == [str(t + 1)]
+    assert boundary_params["end"] == [str(t + 2)]
+    assert boundary_params["direction"] == ["backward"]
+    assert boundary_params["limit"] == ["5000"]
     assert last(server, RANGE).headers["X-Loki-Response-Encoding-Flags"] == "categorize-labels"
     page2 = q.search('{service_name=~"a|b"}', limit=3, cursor=page1.next_cursor)
     assert [r.body for r in page2.records] == ["a0"]
@@ -126,6 +134,9 @@ def test_search_asc_cursor_accumulates_skip(server: MockServer) -> None:
     server.enqueue(
         RANGE,
         json_reply(streams_body(({"s": "a"}, [[str(t), "x1"], [str(t), "x2"]]))),
+        # truncated inside t: the boundary nanosecond is fetched completely
+        json_reply(streams_body(({"s": "a"}, [[str(t), "x1"], [str(t), "x2"], [str(t), "x3"]]))),
+        json_reply(streams_body(({"s": "a"}, [[str(t), "x1"], [str(t), "x2"], [str(t), "x3"]]))),
         json_reply(streams_body(({"s": "a"}, [[str(t), "x1"], [str(t), "x2"], [str(t), "x3"]]))),
         json_reply(streams_body()),
     )
@@ -136,6 +147,7 @@ def test_search_asc_cursor_accumulates_skip(server: MockServer) -> None:
     assert [r.body for r in page2.records] == ["x3"]
     params = query_of(last(server, RANGE))
     assert params["start"] == [str(t)]
+    assert params["end"] == [str(t + 1)]
     assert params["direction"] == ["forward"]
     from grow_grafana_loki._logs import decode_cursor
 
@@ -143,7 +155,7 @@ def test_search_asc_cursor_accumulates_skip(server: MockServer) -> None:
     assert decode_cursor(page2.next_cursor) == (t, 3)
     empty = q.search('{s="a"}', cursor=page2.next_cursor, order="asc")
     assert empty.records == []
-    for kwargs in ({"limit": 0}, {"order": "up"}):
+    for kwargs in ({"limit": 0}, {"limit": 5001}, {"order": "up"}):
         with pytest.raises(sdk.ValidationError):
             q.search("x", **kwargs)  # type: ignore[arg-type]
 

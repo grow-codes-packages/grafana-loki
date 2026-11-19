@@ -320,15 +320,36 @@ func (c *Client) Volume(ctx context.Context, query string, opts VolumeOptions) (
 	return c.getResult(ctx, "volume", pathVolume, q)
 }
 
-// VolumeRange is Volume over time (GET /loki/api/v1/index/volume_range). Loki
-// answers with a matrix, but returns a vector (in Vector) when all data falls
-// into one step, so check ResultType.
+// VolumeRange is Volume over time (GET /loki/api/v1/index/volume_range). The
+// result is always a matrix (ResultType "matrix", data in Matrix): Loki answers
+// with a vector when every series has a single point, and the SDK converts that
+// vector to a one-point-per-series matrix.
 func (c *Client) VolumeRange(ctx context.Context, query string, opts VolumeOptions) (*QueryResult, error) {
 	q, err := volumeQuery("volumeRange", query, opts, true)
 	if err != nil {
 		return nil, err
 	}
-	return c.getResult(ctx, "volumeRange", pathVolRange, q)
+	res, err := c.getResult(ctx, "volumeRange", pathVolRange, q)
+	if err != nil {
+		return nil, err
+	}
+	return vectorToMatrix(res), nil
+}
+
+// vectorToMatrix turns a vector result into the equivalent matrix (one point
+// per series); other result types are returned unchanged.
+func vectorToMatrix(res *QueryResult) *QueryResult {
+	if res.ResultType != ResultTypeVector {
+		return res
+	}
+	matrix := make([]SampleSeries, 0, len(res.Vector))
+	for _, s := range res.Vector {
+		matrix = append(matrix, SampleSeries{Metric: s.Metric, Values: []Point{s.Value}})
+	}
+	res.ResultType = ResultTypeMatrix
+	res.Matrix = matrix
+	res.Vector = nil
+	return res
 }
 
 func volumeQuery(op, query string, opts VolumeOptions, withStep bool) (url.Values, error) {

@@ -182,7 +182,7 @@ describe("tail (WebSocket)", () => {
     );
     await expect(client.tail('{a="b"}', () => {}, { limit: 0 })).rejects.toThrow(/limit/);
     await client.close();
-    await expect(client.tail('{a="b"}', () => {})).rejects.toMatchObject({ code: "CONFIG" });
+    await expect(client.tail('{a="b"}', () => {})).rejects.toMatchObject({ code: "CANCELLED" });
   });
 
   it("reports connection failures, cancellation and abnormal closes", async () => {

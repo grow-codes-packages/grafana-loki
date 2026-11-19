@@ -165,6 +165,11 @@ export class LogQL {
     return this.#stage(`| ${field} ${op} ${quoteLogQL(value)}`);
   }
 
+  /** Appends a raw pipeline stage (`| <stage>`, e.g. `drop level`); the text is not escaped. */
+  pipe(stage: string): LogQL {
+    return this.#stage(`| ${stage.trim()}`);
+  }
+
   /**
    * Renders the query. Throws `ValidationError` when the selector is empty or every matcher
    * also matches the empty string (Loki rejects such selectors).

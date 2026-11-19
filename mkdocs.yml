@@ -117,7 +117,14 @@ nav:
   - Quickstart: quickstart.md
   - Configuration: configuration.md
   - Client: client.md
-  - Functions: functions.md
+  - Functions:
+      - functions.md
+      - Client and status: functions/client.md
+      - Push: functions/push.md
+      - Query: functions/query.md
+      - Tail: functions/tail.md
+      - LogQL builder: functions/logql.md
+      - Log client and search: functions/logging.md
   - Logging: logging.md
   - Error handling: errors.md
   - Hooks and logger: hooks.md

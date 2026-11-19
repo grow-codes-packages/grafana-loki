@@ -153,6 +153,7 @@ fn blocking_client() {
     c.block_on(lc.flush(None)).unwrap();
     assert_eq!(lc.stats().sent, 1);
     let oc = c.new_otlp_log_client(LogClientOptions::default()).unwrap();
+    c.push_otlp(&[], false).unwrap();
     let pc = c
         .new_log_client_with_exporter(
             Arc::new(PushExporter::new(c.async_client(), PushFormat::Protobuf)),
