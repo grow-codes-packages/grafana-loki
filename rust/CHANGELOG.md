@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/grow-codes-packages/grafana-loki/compare/rust-v0.1.1...rust-v0.1.2) (2026-11-19)
+
+
+### Dependencies
+
+* **rust:** Bump the rust group across 2 directories with 6 updates ([#15](https://github.com/grow-codes-packages/grafana-loki/issues/15)) ([3c2171f](https://github.com/grow-codes-packages/grafana-loki/commit/3c2171f27bc5d6a3377edf2c056a22f44d5e08e2))
+
 ## [0.1.1](https://github.com/grow-codes-packages/grafana-loki/compare/rust-v0.1.0...rust-v0.1.1) (2026-11-19)
 
 
