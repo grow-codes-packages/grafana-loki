@@ -20,7 +20,6 @@ import codes.grow.packages.loki.LokiEntry;
 import codes.grow.packages.loki.LokiLogClientOptions;
 import codes.grow.packages.loki.LokiLogExporter;
 import codes.grow.packages.loki.LokiLogQueryClient;
-import codes.grow.packages.loki.LokiServerException;
 import codes.grow.packages.loki.LokiStream;
 import codes.grow.packages.loki.LokiTail;
 import codes.grow.packages.loki.PushFormat;
@@ -607,7 +606,9 @@ class LokiIntegrationTest {
         assertEquals(2, attempts.get(), fault + " is retried once");
       }
     }
-    // Loki answers a multi-tenant (pipe) id with 500 when multi-tenant queries are disabled
+    // Loki answers a multi-tenant (pipe) id with 500 when multi-tenant queries are disabled; a
+    // plain 500 is a retryable UnavailableException (DECISIONS §8-§10: LokiServerException is
+    // only for HTTP 260 and undecodable responses)
     try (LokiClient mt =
         LokiClient.builder()
             .url(env("GROW_GRAFANA_LOKI_MULTI_TENANT_URL"))
@@ -618,9 +619,10 @@ class LokiIntegrationTest {
       assertThrows(
           ValidationException.class,
           () -> pipe.push(List.of(LokiStream.of(Map.of("service_name", "mt"), LokiEntry.of("x")))));
-      LokiServerException e =
-          assertThrows(LokiServerException.class, () -> pipe.queryRange("{service_name=\"mt\"}"));
-      assertFalse(e.retryable());
+      UnavailableException e =
+          assertThrows(UnavailableException.class, () -> pipe.queryRange("{service_name=\"mt\"}"));
+      assertTrue(e.retryable());
+      assertEquals(500, e.httpStatus().orElse(-1));
     }
   }
 }

@@ -929,11 +929,17 @@ fn blocking_round_trip() {
         c.series(&[sel.as_str()], SeriesOptions::default()).unwrap();
     assert_eq!(series.len(), 1);
     let _ = c.index_stats(&sel, IndexOptions::default()).unwrap();
-    assert!(!c
-        .volume(&sel, VolumeOptions::default())
-        .unwrap()
-        .vector
-        .is_empty());
+    // Volume is eventually consistent: a stream that query_range already returns can still be
+    // missing from /index/volume for a moment (seen under load), so poll like the Python suite.
+    let mut vol = c.volume(&sel, VolumeOptions::default()).unwrap();
+    for _ in 0..50 {
+        if !vol.vector.is_empty() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+        vol = c.volume(&sel, VolumeOptions::default()).unwrap();
+    }
+    assert!(!vol.vector.is_empty(), "volume {vol:?}");
     let _ = c
         .volume_range(
             &sel,
