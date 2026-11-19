@@ -118,9 +118,3 @@ func contextCancelled(t *testing.T) (context.Context, context.CancelFunc) {
 	t.Helper()
 	return context.WithCancel(t.Context())
 }
-
-// newTestClient is required by the generated core tests (core_tls_test.go).
-func newTestClient(t *testing.T, url string, mutate func(*Config)) *Client {
-	t.Helper()
-	return newLoki(t, url, mutate)
-}

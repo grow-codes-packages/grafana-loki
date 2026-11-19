@@ -156,7 +156,7 @@ func TestClientCore(t *testing.T) {
 		if ok, err := c.Ready(t.Context()); err != nil || ok {
 			t.Fatalf("ready %v %v", ok, err)
 		}
-		empty := newTestServer(t, status(http.StatusInternalServerError))
+		empty := newTestServer(t, statusHandler(http.StatusInternalServerError))
 		ce := newLoki(t, empty.URL, nil)
 		if hs, _ := ce.Health(t.Context()); hs.Healthy || hs.Status != "unhealthy" {
 			t.Fatalf("empty body: %+v", hs)

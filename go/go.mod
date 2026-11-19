@@ -9,11 +9,13 @@ require go.opentelemetry.io/otel v1.47.0 // indirect
 
 require go.opentelemetry.io/otel/trace v1.47.0
 
-require go.uber.org/zap v1.28.0
+require (
+	github.com/coder/websocket v1.8.14
+	github.com/golang/snappy v1.0.0
+	go.uber.org/zap v1.28.0
+)
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/coder/websocket v1.8.14 // indirect
-	github.com/golang/snappy v1.0.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 )

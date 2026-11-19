@@ -258,14 +258,14 @@ func TestPushErrors(t *testing.T) {
 		}
 	})
 	t.Run("blocked ingestion 260", func(t *testing.T) {
-		ts := newTestServer(t, status(statusIngestionBlocked))
+		ts := newTestServer(t, statusHandler(statusIngestionBlocked))
 		err := newLoki(t, ts.URL, nil).Push(t.Context(), []Stream{{Entries: []Entry{{Line: "l"}}}}, PushOptions{})
 		if e := asError(t, err); e.Code != ErrorCodeUnavailable || e.Retryable || e.HTTPStatus != 260 {
 			t.Fatalf("%+v", e)
 		}
 	})
 	t.Run("client side validation", func(t *testing.T) {
-		ts := newTestServer(t, status(http.StatusNoContent))
+		ts := newTestServer(t, statusHandler(http.StatusNoContent))
 		c := newLoki(t, ts.URL, func(cfg *Config) { cfg.DisableLabelGuard = true })
 		bad := []Stream{
 			{Labels: map[string]string{"bad-label": "x"}},
