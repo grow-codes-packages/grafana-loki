@@ -264,31 +264,46 @@ async fn core_push_and_query() {
         end: Some(SystemTime::now() + Duration::from_secs(60)),
         ..Default::default()
     };
-    let vol = c
-        .volume(
-            &sel.to_string(),
-            VolumeOptions {
-                target_labels: vec!["level".into()],
-                aggregate_by: Some(VolumeAggregation::Labels),
-                ..window.clone()
-            },
-        )
-        .await
-        .unwrap();
+    // volume / volume_range can briefly lag behind the push: poll like index_stats below.
+    let mut vol = sdk::QueryResult::default();
+    for _ in 0..40 {
+        vol = c
+            .volume(
+                &sel.to_string(),
+                VolumeOptions {
+                    target_labels: vec!["level".into()],
+                    aggregate_by: Some(VolumeAggregation::Labels),
+                    ..window.clone()
+                },
+            )
+            .await
+            .unwrap();
+        if !vol.vector.is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
     assert!(
         !vol.vector.is_empty() && vol.vector[0].value.value > 0.0,
         "volume {vol:?}"
     );
-    let vr = c
-        .volume_range(
-            &sel.to_string(),
-            VolumeOptions {
-                step: Some(Duration::from_secs(60)),
-                ..window.clone()
-            },
-        )
-        .await
-        .unwrap();
+    let mut vr = sdk::QueryResult::default();
+    for _ in 0..40 {
+        vr = c
+            .volume_range(
+                &sel.to_string(),
+                VolumeOptions {
+                    step: Some(Duration::from_secs(60)),
+                    ..window.clone()
+                },
+            )
+            .await
+            .unwrap();
+        if !vr.matrix.is_empty() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
     assert!(
         vr.result_type == "matrix" && !vr.matrix.is_empty() && vr.vector.is_empty(),
         "volume range {vr:?}"

@@ -312,18 +312,26 @@ describe("push + query round trips", () => {
     assert.ok(stats.streams >= 1, JSON.stringify(stats));
     assert.ok(stats.entries >= 1, JSON.stringify(stats));
     assert.equal(typeof stats.bytes, "number");
-    const volume = await loki.volume(`{run="${run}"}`, {
-      ...window,
-      targetLabels: ["kind"],
-      aggregateBy: "labels",
-      limit: 50,
-    });
+    // volume / volume_range can lag behind index stats right after a flush: poll them too.
+    const volume = await until(
+      () =>
+        loki.volume(`{run="${run}"}`, {
+          ...window,
+          targetLabels: ["kind"],
+          aggregateBy: "labels",
+          limit: 50,
+        }),
+      (v) => v.vector.some((e) => "kind" in e.metric),
+    );
     assert.equal(volume.resultType, "vector");
     assert.ok(
       volume.vector.some((v) => "kind" in v.metric),
       JSON.stringify(volume.vector),
     );
-    const range = await loki.volumeRange(`{run="${run}"}`, { ...window, stepMs: 60_000 });
+    const range = await until(
+      () => loki.volumeRange(`{run="${run}"}`, { ...window, stepMs: 60_000 }),
+      (r) => r.matrix.length >= 1,
+    );
     assert.equal(range.resultType, "matrix");
     assert.ok(range.matrix.length >= 1);
   });
