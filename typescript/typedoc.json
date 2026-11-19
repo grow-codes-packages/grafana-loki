@@ -1,11 +1,17 @@
 {
   "$schema": "https://typedoc.org/schema.json",
   "name": "@grow-codes/grafana-loki",
-  "entryPoints": ["src/index.ts", "src/testing/index.ts"],
+  "entryPoints": ["src/index.ts", "src/testing-entry.ts"],
   "out": "docs/api",
   "excludePrivate": true,
   "excludeInternal": true,
   "readme": "README.md",
   "includeVersion": true,
+  "externalSymbolLinkMappings": {
+    "@types/node": {
+      "Stream.Writable.write": "https://nodejs.org/api/stream.html#writablewritechunk-encoding-callback",
+      "Stream.Writable.end": "https://nodejs.org/api/stream.html#writableendchunk-encoding-callback"
+    }
+  },
   "treatWarningsAsErrors": false
 }

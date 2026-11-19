@@ -20,3 +20,4 @@ test/testing/
 test/helpers/
 # Recorded Loki responses (copied verbatim from the GRO-1374 prep run):
 test/fixtures/
+*.md

@@ -42,6 +42,7 @@ all = [
   "grow-grafana-loki[structlog,snappy]",
 ]
 dev = [
+  "twine>=6.1",
   "build>=1.2",
   "hatchling>=1.25",
   "pytest>=8.3",
@@ -93,6 +94,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "PLC0415", "N802", "B017", "PT011", "PT018", "N815", "RUF001", "RUF012", "SIM117"]
+"integration/**" = ["S", "PLC0415", "N802", "B017", "PT011", "PT018", "N815", "RUF001", "RUF012", "SIM117"]
 "tools/**" = ["S"]
 
 [tool.ruff.format]
