@@ -259,24 +259,40 @@ class LokiIntegrationTest {
               .isEmpty());
 
       // volume (ingester data) and index statistics (after a flush)
-      QueryResult volume =
-          c.volume(
-              "{service_name=\"java-it\"}",
-              VolumeOptions.builder()
-                  .targetLabels(List.of("level"))
-                  .aggregateBy(VolumeOptions.AggregateBy.LABELS)
-                  .build());
+      // volume / volumeRange can briefly lag behind the push: poll them (30 s budget).
+      long volumeDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+      QueryResult volume;
+      do {
+        volume =
+            c.volume(
+                "{service_name=\"java-it\"}",
+                VolumeOptions.builder()
+                    .targetLabels(List.of("level"))
+                    .aggregateBy(VolumeOptions.AggregateBy.LABELS)
+                    .build());
+        if (!volume.vector().isEmpty()) {
+          break;
+        }
+        Thread.sleep(250);
+      } while (System.nanoTime() < volumeDeadline);
       assertEquals(ResultType.VECTOR, volume.resultType());
       assertFalse(volume.vector().isEmpty(), "volume of the pushed streams");
       assertTrue(volume.vector().get(0).value() > 0);
-      QueryResult volumeRange =
-          c.volumeRange(
-              "{service_name=\"java-it\"}",
-              VolumeOptions.builder()
-                  .start(t0.minusSeconds(60))
-                  .end(Instant.now().plusSeconds(60))
-                  .step(Duration.ofSeconds(60))
-                  .build());
+      QueryResult volumeRange;
+      do {
+        volumeRange =
+            c.volumeRange(
+                "{service_name=\"java-it\"}",
+                VolumeOptions.builder()
+                    .start(t0.minusSeconds(60))
+                    .end(Instant.now().plusSeconds(60))
+                    .step(Duration.ofSeconds(60))
+                    .build());
+        if (!volumeRange.matrix().isEmpty()) {
+          break;
+        }
+        Thread.sleep(250);
+      } while (System.nanoTime() < volumeDeadline);
       assertEquals(ResultType.MATRIX, volumeRange.resultType());
       assertFalse(volumeRange.matrix().isEmpty());
       assertNotNull(c.volumeAsync("{service_name=\"java-it\"}", VolumeOptions.defaults()).join());
