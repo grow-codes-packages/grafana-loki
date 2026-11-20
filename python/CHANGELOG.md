@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/grow-codes-packages/grafana-loki/compare/python-v0.1.1...python-v0.2.0) (2026-11-20)
+
+
+### Features
+
+* sync grafana-loki to sdk-kit 0.4.0 (foundation API) ([#17](https://github.com/grow-codes-packages/grafana-loki/issues/17)) ([748f5e3](https://github.com/grow-codes-packages/grafana-loki/commit/748f5e3971a1ebb047d9989665ed7badb866bcc4))
+
 ## [0.1.1](https://github.com/grow-codes-packages/grafana-loki/compare/python-v0.1.0...python-v0.1.1) (2026-11-19)
 
 
