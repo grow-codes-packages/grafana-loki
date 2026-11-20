@@ -467,16 +467,29 @@ def test_async_round_trips(env: dict[str, str], run: str) -> None:
             )
             await c.push_otlp([sdk.LogRecord(body=f"o {run}", resource={"service.name": service})])
             sel = f'{{service_name="{service}"}}'
-            got = entries(await c.query_range(sel, start=base, direction="forward"))
+            # queries are eventually consistent: poll like the sync suite does
+            got: list[tuple[dict[str, str], sdk.StreamEntry]] = []
+            metric = None
+            for _ in range(80):
+                got = entries(await c.query_range(sel, start=base, direction="forward"))
+                metric = await c.query(f"sum(count_over_time({sel}[5m]))")
+                if len(got) == 2 and metric.vector and metric.vector[0].value.value == 2.0:
+                    break
+                await asyncio.sleep(0.25)
             assert sorted(e.line for _, e in got) == [f"a {run}", f"o {run}"]
-            metric = await c.query(f"sum(count_over_time({sel}[5m]))")
-            assert metric.vector[0].value.value == 2.0
+            assert metric is not None and metric.vector[0].value.value == 2.0
             assert "service_name" in await c.labels()
             assert service in await c.label_values("service_name")
             assert (await c.series(sel))[0]["service_name"] == service
-            for _ in range(40):
+            # volume_range lags volume: same 60 s budget and future end as the sync suite
+            for _ in range(240):
                 vol = await c.volume(sel, start=base - 600_000_000_000)
-                vrange = await c.volume_range(sel, start=base - 600_000_000_000, step_s=10)
+                vrange = await c.volume_range(
+                    sel,
+                    start=base - 600_000_000_000,
+                    end=time.time_ns() + 60_000_000_000,
+                    step_s=10,
+                )
                 if vol.vector and vrange.matrix:
                     break
                 await asyncio.sleep(0.25)
