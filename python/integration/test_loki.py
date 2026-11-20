@@ -172,10 +172,10 @@ def test_push_otlp_round_trip(client: sdk.LokiClient, run: str) -> None:
 
 def test_query_metric_and_log_selector(client: sdk.LokiClient, pushed: tuple[str, int]) -> None:
     service, _ = pushed
-    result = client.query(f'sum(count_over_time({{service_name="{service}"}}[5m]))')
+    # metric queries are eventually consistent: poll until all 3 pushed lines count
+    q = f'sum(count_over_time({{service_name="{service}"}}[5m]))'
+    result = until(lambda: (r := client.query(q)).vector and r.vector[0].value.value == 3.0 and r)
     assert result.result_type == "vector"
-    assert result.vector
-    assert result.vector[0].value.value == 3.0
     with pytest.raises(sdk.ValidationError):
         client.query(f'{{service_name="{service}"}}')
     with pytest.raises(sdk.ValidationError) as info:
@@ -233,8 +233,16 @@ def test_index_stats_volume_volume_range(client: sdk.LokiClient, pushed: tuple[s
     volume = until(lambda: (v := client.volume(selector, start=start)).vector and v)
     assert volume.result_type == "vector"
     assert volume.vector[0].value.value > 0
-    by_level = client.volume(
-        selector, start=start, target_labels=["level"], aggregate_by="labels", limit=10
+    by_level = until(
+        lambda: (
+            (
+                b := client.volume(
+                    selector, start=start, target_labels=["level"], aggregate_by="labels", limit=10
+                )
+            ).vector
+            and {s.metric.get("level") for s in b.vector} == {""}
+            and b
+        )
     )
     assert {s.metric.get("level") for s in by_level.vector} == {""}
     # like the Rust/Java suites: an end in the future and a longer budget (volume_range lags volume)
